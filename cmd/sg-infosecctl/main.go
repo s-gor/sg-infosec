@@ -7,6 +7,9 @@ import (
 	"os"
 
 	"github.com/s-gor/sg-infosec/internal/buildinfo"
+	"github.com/s-gor/sg-infosec/internal/cli"
+	"github.com/s-gor/sg-infosec/internal/config"
+	"github.com/s-gor/sg-infosec/pkg/client"
 )
 
 func main() {
@@ -17,11 +20,17 @@ func run(args []string, stdout, stderr io.Writer) int {
 	if len(args) == 1 && args[0] == "--version" {
 		if err := json.NewEncoder(stdout).Encode(buildinfo.Info()); err != nil {
 			fmt.Fprintf(stderr, "encode version: %v\n", err)
-			return 1
+			return cli.ExitFailure
 		}
-		return 0
+		return cli.ExitSuccess
 	}
-
-	fmt.Fprintln(stderr, "command handling is not implemented")
-	return 2
+	return cli.Run(args, stdout, stderr, cli.Dependencies{
+		NewClient: func(socketPath string) cli.Service {
+			return client.New(socketPath)
+		},
+		ValidateConfig: func(path string) error {
+			_, err := config.Load(path)
+			return err
+		},
+	})
 }
