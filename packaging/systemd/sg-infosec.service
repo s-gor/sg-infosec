@@ -1,0 +1,42 @@
+[Unit]
+Description=SG InfoSec local security service
+After=local-fs.target
+Before=sg-gateway.service
+
+[Service]
+Type=simple
+User=sg-infosec
+Group=sg-infosec
+ExecStartPre=/usr/local/sbin/sg-infosecd --config /etc/sg-infosec/sg-infosec.yaml --check-config
+ExecStart=/usr/local/sbin/sg-infosecd --config /etc/sg-infosec/sg-infosec.yaml
+RuntimeDirectory=sg-infosec
+RuntimeDirectoryMode=0750
+StateDirectory=sg-infosec
+StateDirectoryMode=0750
+UMask=0007
+Restart=on-failure
+RestartSec=3s
+TimeoutStopSec=15s
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictAddressFamilies=AF_UNIX
+CapabilityBoundingSet=
+AmbientCapabilities=
+SystemCallArchitectures=native
+ReadOnlyPaths=/etc/sg-infosec
+ReadWritePaths=/run/sg-infosec /var/lib/sg-infosec
+
+[Install]
+WantedBy=multi-user.target

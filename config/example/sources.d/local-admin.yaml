@@ -1,0 +1,16 @@
+source_id: local-admin
+user: root
+group: root
+allowed_events:
+  - auth.failed
+  - auth.succeeded
+  - api.auth_failed
+allowed_scopes:
+  - admin-login
+  - admin-api
+  - ssh
+  - panel-port
+permissions:
+  - check_decisions
+  - read_admin
+  - write_admin

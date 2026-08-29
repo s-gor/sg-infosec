@@ -15,13 +15,15 @@ Implemented:
 - local health, decision, allowlist and audit APIs;
 - bounded retention, process locking and graceful socket cleanup;
 - Unix-only Go client SDK and `sg-infosecctl` administration CLI;
+- hardened systemd service, tmpfiles contract and preserving install/uninstall scripts;
+- separate least-privilege SG-Gateway source and local root administration source;
 - real-socket end-to-end contract and a 30 MiB idle-RSS smoke guard.
 
 Not implemented yet:
 
 - `nftables` enforcer;
-- SG-Gateway adapter and panel UI;
-- Debian package, production installer and updater;
+- SG-Gateway panel UI and integrated release wiring;
+- Debian package and automatic updater;
 - Windows service or Android agent packages.
 
 ## Local requirements
@@ -48,7 +50,26 @@ make build
 ./bin/sg-infosecctl --json --socket /run/sg-infosec/control.sock health
 ```
 
-Normal daemon startup requires a valid configuration, an existing database parent directory, existing socket parent directories and configured local source users. This branch is still a development artifact, not an installation package.
+For a systemd installation from a verified source checkout:
+
+```bash
+make build
+sudo packaging/install.sh
+```
+
+The installer creates the unprivileged `sg-infosec` account, installs the two binaries, creates narrow runtime/state directories, and preserves every existing configuration file. When an existing `sg-gateway` account is detected, it receives socket access through the `sg-infosec` supplementary group and the two SG-Gateway policies are installed only when absent. No VPN service, firewall rule or public listener is changed.
+
+Remove program files while preserving configuration and state:
+
+```bash
+sudo packaging/uninstall.sh
+```
+
+Explicitly purge SG InfoSec configuration and state:
+
+```bash
+sudo packaging/uninstall.sh --purge
+```
 
 No CI workflow is part of this stage.
 

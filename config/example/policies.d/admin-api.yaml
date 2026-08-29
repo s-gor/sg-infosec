@@ -1,0 +1,12 @@
+policy_id: sg-gateway-admin-api
+enabled: true
+event_type: api.auth_failed
+scope: admin-api
+source_id: sg-gateway
+threshold: 10
+window: 10m
+base_duration: 15m
+escalation_factor: 4
+max_duration: 24h
+reset_interval: 720h
+backend: application
