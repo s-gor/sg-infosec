@@ -17,6 +17,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/s-gor/sg-infosec/internal/clock"
+	"github.com/s-gor/sg-infosec/internal/engine"
 	"github.com/s-gor/sg-infosec/internal/model"
 	"github.com/s-gor/sg-infosec/internal/sourceauth"
 	"github.com/s-gor/sg-infosec/internal/store"
@@ -39,16 +40,19 @@ var sensitiveMetadataKeys = map[string]struct{}{
 }
 
 type Processor struct {
-	store *store.Store
-	clock clock.Clock
+	engine *engine.Engine
+	clock  clock.Clock
 }
 
-func NewProcessor(database *store.Store, sourceClock clock.Clock) *Processor {
-	return &Processor{store: database, clock: sourceClock}
+func NewProcessor(database *store.Store, sourceClock clock.Clock, policies ...model.Policy) *Processor {
+	return &Processor{
+		engine: engine.New(database, sourceClock, policies),
+		clock:  sourceClock,
+	}
 }
 
 func (p *Processor) Process(ctx context.Context, source sourceauth.Identity, request protocol.EventRequest) (protocol.EventResponse, error) {
-	if p == nil || p.store == nil || p.clock == nil {
+	if p == nil || p.engine == nil || p.clock == nil {
 		return protocol.EventResponse{}, fmt.Errorf("events processor is not initialized")
 	}
 	if source.SourceID == "" {
@@ -102,16 +106,15 @@ func (p *Processor) Process(ctx context.Context, source sourceauth.Identity, req
 		ReceivedAt: now,
 		Metadata:   request.Metadata,
 	}
-	inserted := false
-	err = p.store.WithTx(ctx, func(tx *store.Tx) error {
-		var insertErr error
-		inserted, insertErr = tx.InsertEvent(ctx, event)
-		return insertErr
-	})
+	result, err := p.engine.Process(ctx, source, event)
 	if err != nil {
 		return protocol.EventResponse{}, err
 	}
-	return protocol.EventResponse{Accepted: true, Duplicate: !inserted}, nil
+	return protocol.EventResponse{
+		Accepted:   true,
+		Duplicate:  result.Duplicate,
+		DecisionID: result.DecisionID,
+	}, nil
 }
 
 type Handler struct {
