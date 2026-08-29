@@ -38,6 +38,7 @@ Not implemented yet:
 make check
 go test ./tests/e2e -v
 bash scripts/smoke-resource.sh
+bash scripts/smoke-sg-gateway-adapter.sh /path/to/sg-gateway-v22
 ```
 
 Build and inspect the commands:
