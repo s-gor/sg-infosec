@@ -39,16 +39,25 @@ var sensitiveMetadataKeys = map[string]struct{}{
 	"config":           {},
 }
 
+type DecisionNotifier interface {
+	Trigger()
+}
+
 type Processor struct {
-	engine *engine.Engine
-	clock  clock.Clock
+	engine   *engine.Engine
+	clock    clock.Clock
+	notifier DecisionNotifier
 }
 
 func NewProcessor(database *store.Store, sourceClock clock.Clock, policies ...model.Policy) *Processor {
-	return &Processor{
-		engine: engine.New(database, sourceClock, policies),
-		clock:  sourceClock,
+	return &Processor{engine: engine.New(database, sourceClock, policies), clock: sourceClock}
+}
+
+func (p *Processor) WithDecisionNotifier(notifier DecisionNotifier) *Processor {
+	if p != nil {
+		p.notifier = notifier
 	}
+	return p
 }
 
 func (p *Processor) Process(ctx context.Context, source sourceauth.Identity, request protocol.EventRequest) (protocol.EventResponse, error) {
@@ -110,11 +119,10 @@ func (p *Processor) Process(ctx context.Context, source sourceauth.Identity, req
 	if err != nil {
 		return protocol.EventResponse{}, err
 	}
-	return protocol.EventResponse{
-		Accepted:   true,
-		Duplicate:  result.Duplicate,
-		DecisionID: result.DecisionID,
-	}, nil
+	if result.DecisionID != "" && !result.Duplicate && p.notifier != nil {
+		p.notifier.Trigger()
+	}
+	return protocol.EventResponse{Accepted: true, Duplicate: result.Duplicate, DecisionID: result.DecisionID}, nil
 }
 
 type Handler struct {

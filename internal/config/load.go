@@ -20,9 +20,7 @@ type Lookup interface {
 	Group(name string) (uint32, error)
 }
 
-type Options struct {
-	Lookup Lookup
-}
+type Options struct{ Lookup Lookup }
 
 type osLookup struct{}
 
@@ -49,6 +47,9 @@ func Load(path string) (Config, error) {
 }
 
 func LoadWithOptions(path string, options Options) (Config, error) {
+	if strings.TrimSpace(path) == "" {
+		return Config{}, fmt.Errorf("configuration path is required")
+	}
 	if options.Lookup == nil {
 		options.Lookup = osLookup{}
 	}
@@ -64,7 +65,7 @@ func LoadWithOptions(path string, options Options) (Config, error) {
 		return Config{}, err
 	}
 	base := filepath.Dir(path)
-	cfg := Config{}
+	var cfg Config
 	if cfg.DatabasePath, err = requiredPath(fields, "database_path", base); err != nil {
 		return Config{}, err
 	}
@@ -73,6 +74,9 @@ func LoadWithOptions(path string, options Options) (Config, error) {
 	}
 	if cfg.ControlSocket, err = requiredPath(fields, "control_socket", base); err != nil {
 		return Config{}, err
+	}
+	if cfg.EventsSocket == cfg.ControlSocket {
+		return Config{}, fmt.Errorf("events_socket and control_socket must be different")
 	}
 	if cfg.EventBodyLimit, err = requiredInt64(fields, "event_body_limit"); err != nil {
 		return Config{}, err
@@ -124,6 +128,9 @@ func loadSources(dir string, lookup Lookup) ([]Source, error) {
 	if err != nil {
 		return nil, fmt.Errorf("sources: %w", err)
 	}
+	if len(files) == 0 {
+		return nil, fmt.Errorf("sources: no YAML fragments in %s", dir)
+	}
 	seen := make(map[string]struct{})
 	uidOwners := make(map[uint32]string)
 	result := make([]Source, 0, len(files))
@@ -139,6 +146,9 @@ func loadSources(dir string, lookup Lookup) ([]Source, error) {
 		id, err := requiredScalar(fields, "source_id")
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", path, err)
+		}
+		if !validIdentifier(id) {
+			return nil, fmt.Errorf("source_id %q contains unsupported characters", id)
 		}
 		if _, exists := seen[id]; exists {
 			return nil, fmt.Errorf("duplicate source_id %q", id)
@@ -160,7 +170,7 @@ func loadSources(dir string, lookup Lookup) ([]Source, error) {
 		if groupNode, ok := fields["group"]; ok {
 			groupName, err := scalar(groupNode, "group")
 			if err != nil {
-				return nil, err
+				return nil, fmt.Errorf("source %q: %w", id, err)
 			}
 			gid, err := lookup.Group(groupName)
 			if err != nil {
@@ -232,7 +242,10 @@ func loadPolicies(dir string) ([]model.Policy, error) {
 		}
 		var policy model.Policy
 		if policy.ID, err = requiredScalar(fields, "policy_id"); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("%s: %w", path, err)
+		}
+		if !validIdentifier(policy.ID) {
+			return nil, fmt.Errorf("policy_id %q contains unsupported characters", policy.ID)
 		}
 		if _, exists := seen[policy.ID]; exists {
 			return nil, fmt.Errorf("duplicate policy_id %q", policy.ID)
@@ -243,20 +256,23 @@ func loadPolicies(dir string) ([]model.Policy, error) {
 		}
 		eventValue, err := requiredScalar(fields, "event_type")
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("policy %q: %w", policy.ID, err)
 		}
 		if policy.EventType, err = model.ParseEventType(eventValue); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("policy %q: %w", policy.ID, err)
 		}
 		scopeValue, err := requiredScalar(fields, "scope")
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("policy %q: %w", policy.ID, err)
 		}
 		if policy.Scope, err = model.ParseScope(scopeValue); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("policy %q: %w", policy.ID, err)
 		}
 		if policy.SourceID, err = optionalScalar(fields, "source_id"); err != nil {
 			return nil, fmt.Errorf("policy %q: %w", policy.ID, err)
+		}
+		if policy.SourceID != "" && !validIdentifier(policy.SourceID) {
+			return nil, fmt.Errorf("policy %q source_id %q contains unsupported characters", policy.ID, policy.SourceID)
 		}
 		threshold, err := requiredUint32(fields, "threshold")
 		if err != nil || threshold == 0 {
@@ -264,29 +280,29 @@ func loadPolicies(dir string) ([]model.Policy, error) {
 		}
 		policy.Threshold = threshold
 		if policy.Window, err = requiredDuration(fields, "window"); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("policy %q: %w", policy.ID, err)
 		}
 		if policy.BaseDuration, err = requiredDuration(fields, "base_duration"); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("policy %q: %w", policy.ID, err)
 		}
 		if policy.EscalationFactor, err = requiredUint32(fields, "escalation_factor"); err != nil || policy.EscalationFactor == 0 {
 			return nil, fmt.Errorf("policy %q escalation_factor must be greater than zero", policy.ID)
 		}
 		if policy.MaxDuration, err = requiredDuration(fields, "max_duration"); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("policy %q: %w", policy.ID, err)
 		}
 		if policy.ResetInterval, err = requiredDuration(fields, "reset_interval"); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("policy %q: %w", policy.ID, err)
 		}
 		backendValue, err := requiredScalar(fields, "backend")
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("policy %q: %w", policy.ID, err)
 		}
 		if policy.Backend, err = model.ParseBackend(backendValue); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("policy %q: %w", policy.ID, err)
 		}
-		if policy.Backend == model.BackendNFTables {
-			return nil, fmt.Errorf("policy %q: nftables backend is not available in Core MVP", policy.ID)
+		if err := validatePolicyBackend(policy); err != nil {
+			return nil, err
 		}
 		if policy.Window <= 0 || policy.BaseDuration <= 0 || policy.MaxDuration <= 0 || policy.ResetInterval <= 0 {
 			return nil, fmt.Errorf("policy %q durations must be greater than zero", policy.ID)
@@ -350,17 +366,18 @@ func parseAllowlist(node *yamlmini.Node) ([]model.AllowlistEntry, error) {
 		return nil, err
 	}
 	result := make([]model.AllowlistEntry, 0, len(values))
+	seen := make(map[string]struct{}, len(values))
 	for _, value := range values {
 		prefix, err := parsePrefix(value)
 		if err != nil {
 			return nil, fmt.Errorf("allowlist %q: %w", value, err)
 		}
-		result = append(result, model.AllowlistEntry{
-			ID:          "config:" + prefix.String(),
-			Prefix:      prefix,
-			Description: "configured allowlist",
-			CreatedBy:   "configuration",
-		})
+		key := prefix.String()
+		if _, exists := seen[key]; exists {
+			return nil, fmt.Errorf("allowlist contains duplicate prefix %q", key)
+		}
+		seen[key] = struct{}{}
+		result = append(result, model.AllowlistEntry{ID: "config:" + key, Prefix: prefix, Description: "configured allowlist", CreatedBy: "configuration"})
 	}
 	return result, nil
 }
@@ -371,11 +388,23 @@ func parsePrefix(value string) (netip.Prefix, error) {
 		if err != nil {
 			return netip.Prefix{}, err
 		}
-		return prefix.Masked(), nil
+		addr := prefix.Addr().Unmap()
+		if addr.Is4() && prefix.Bits() > 32 {
+			return netip.Prefix{}, fmt.Errorf("invalid IPv4 prefix length")
+		}
+		if addr.Is4() {
+			prefix = netip.PrefixFrom(addr, prefix.Bits()).Masked()
+		} else {
+			prefix = netip.PrefixFrom(addr, prefix.Bits()).Masked()
+		}
+		return prefix, nil
 	}
 	addr, err := netip.ParseAddr(value)
 	if err != nil {
 		return netip.Prefix{}, err
+	}
+	if addr.Zone() != "" {
+		return netip.Prefix{}, fmt.Errorf("zones are not supported")
 	}
 	addr = addr.Unmap()
 	bits := 128
@@ -417,6 +446,9 @@ func strictMap(node *yamlmini.Node, context string, allowed []string) (map[strin
 		if _, ok := allowedSet[pair.Key]; !ok {
 			return nil, fmt.Errorf("%s: unknown field %q", context, pair.Key)
 		}
+		if _, duplicate := result[pair.Key]; duplicate {
+			return nil, fmt.Errorf("%s: duplicate field %q", context, pair.Key)
+		}
 		result[pair.Key] = pair.Value
 	}
 	return result, nil
@@ -442,13 +474,16 @@ func scalar(node *yamlmini.Node, key string) (string, error) {
 	if node == nil || node.Kind != yamlmini.Scalar || strings.TrimSpace(node.Value) == "" {
 		return "", fmt.Errorf("field %q must be a non-empty scalar", key)
 	}
-	return node.Value, nil
+	return strings.TrimSpace(node.Value), nil
 }
 
 func requiredPath(fields map[string]*yamlmini.Node, key, base string) (string, error) {
 	value, err := requiredScalar(fields, key)
 	if err != nil {
 		return "", err
+	}
+	if strings.ContainsRune(value, '\x00') {
+		return "", fmt.Errorf("field %q contains NUL", key)
 	}
 	if filepath.IsAbs(value) {
 		return filepath.Clean(value), nil
@@ -540,4 +575,17 @@ func sequence(node *yamlmini.Node, key string) ([]string, error) {
 		return nil, fmt.Errorf("field %q must not be empty", key)
 	}
 	return result, nil
+}
+
+func validIdentifier(value string) bool {
+	if value == "" || len(value) > 128 {
+		return false
+	}
+	for _, r := range value {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '-' || r == '_' || r == '.' || r == ':' {
+			continue
+		}
+		return false
+	}
+	return true
 }

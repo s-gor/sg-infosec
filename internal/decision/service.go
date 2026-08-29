@@ -33,6 +33,7 @@ type CheckResult struct {
 type ManualInput struct {
 	SourceID          string
 	Scope             model.Scope
+	Backend           model.Backend
 	IP                netip.Addr
 	Duration          time.Duration
 	Reason            string
@@ -75,11 +76,7 @@ func (s *Service) Check(ctx context.Context, sourceID string, scope model.Scope,
 			if err := tx.MarkDecisionExpired(ctx, current.ID, now); err != nil {
 				return err
 			}
-			return tx.AppendAudit(ctx, model.AuditEntry{
-				OccurredAt: now, Actor: "system", Action: "decision.expired",
-				TargetType: "decision", TargetID: current.ID,
-				RequestID: "expiry:" + current.ID, Result: "success",
-			})
+			return tx.AppendAudit(ctx, model.AuditEntry{OccurredAt: now, Actor: "system", Action: "decision.expired", TargetType: "decision", TargetID: current.ID, RequestID: "expiry:" + current.ID, Result: "success"})
 		}
 		result = CheckResult{Blocked: true, DecisionID: current.ID, ExpiresAt: current.ExpiresAt, ReasonCode: current.ReasonCode}
 		return nil
@@ -95,7 +92,12 @@ func (s *Service) CreateManual(ctx context.Context, input ManualInput) (model.De
 	if input.SourceID == "" || !input.IP.IsValid() || input.Duration <= 0 || input.Duration > MaxManualDuration || input.Reason == "" || len(input.Reason) > 256 {
 		return model.Decision{}, ErrInvalidManual
 	}
-	if input.Scope != model.ScopeAdminLogin && input.Scope != model.ScopeAdminAPI {
+	if input.Backend == "" {
+		input.Backend = model.BackendApplication
+	}
+	validApplication := input.Backend == model.BackendApplication && (input.Scope == model.ScopeAdminLogin || input.Scope == model.ScopeAdminAPI)
+	validNFTables := input.Backend == model.BackendNFTables && input.Scope == model.ScopeSSH
+	if !validApplication && !validNFTables {
 		return model.Decision{}, ErrInvalidManual
 	}
 	if input.Actor == "" || input.RequestID == "" {
@@ -123,23 +125,11 @@ func (s *Service) CreateManual(ctx context.Context, input ManualInput) (model.De
 		if err != nil {
 			return fmt.Errorf("generate decision ID: %w", err)
 		}
-		created = model.Decision{
-			ID: id, SourceID: input.SourceID, PolicyID: "manual", Scope: input.Scope,
-			IP: input.IP, Backend: model.BackendApplication, State: model.DecisionActive,
-			ReasonCode: "manual", Strike: 1, StartsAt: now, ExpiresAt: now.Add(input.Duration),
-			CreatedAt: now, UpdatedAt: now,
-		}
+		created = model.Decision{ID: id, SourceID: input.SourceID, PolicyID: "manual", Scope: input.Scope, IP: input.IP, Backend: input.Backend, State: model.DecisionActive, ReasonCode: "manual", Strike: 1, StartsAt: now, ExpiresAt: now.Add(input.Duration), CreatedAt: now, UpdatedAt: now}
 		if err := tx.InsertDecision(ctx, created); err != nil {
 			return err
 		}
-		return tx.AppendAudit(ctx, model.AuditEntry{
-			OccurredAt: now, Actor: input.Actor, Action: "decision.manual_created",
-			TargetType: "decision", TargetID: id, RequestID: input.RequestID, Result: "success",
-			Details: map[string]any{
-				"source_id": input.SourceID, "scope": string(input.Scope),
-				"reason": input.Reason, "override_allowlist": input.OverrideAllowlist,
-			},
-		})
+		return tx.AppendAudit(ctx, model.AuditEntry{OccurredAt: now, Actor: input.Actor, Action: "decision.manual_created", TargetType: "decision", TargetID: id, RequestID: input.RequestID, Result: "success", Details: map[string]any{"source_id": input.SourceID, "scope": string(input.Scope), "backend": string(input.Backend), "reason": input.Reason, "override_allowlist": input.OverrideAllowlist}})
 	})
 	return created, err
 }

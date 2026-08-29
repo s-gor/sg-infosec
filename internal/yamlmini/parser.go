@@ -1,13 +1,9 @@
-// Package yamlmini parses the deliberately small YAML subset used by SG InfoSec
-// configuration files. It supports mappings, nested mappings, scalar sequences,
-// quoted scalars, and comments. Advanced YAML features are rejected explicitly.
 package yamlmini
 
 import (
 	"bufio"
 	"fmt"
 	"io"
-	"regexp"
 	"strconv"
 	"strings"
 )
@@ -15,7 +11,8 @@ import (
 type Kind uint8
 
 const (
-	Scalar Kind = iota + 1
+	Invalid Kind = iota
+	Scalar
 	Mapping
 	Sequence
 )
@@ -23,7 +20,6 @@ const (
 type Pair struct {
 	Key   string
 	Value *Node
-	Line  int
 }
 
 type Node struct {
@@ -37,78 +33,168 @@ type Node struct {
 type sourceLine struct {
 	indent int
 	text   string
-	number int
+	line   int
 }
-
-var keyPattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_-]*$`)
 
 func Parse(r io.Reader) (*Node, error) {
-	lines, err := scan(r)
-	if err != nil {
-		return nil, err
+	if r == nil {
+		return nil, fmt.Errorf("nil YAML reader")
 	}
-	if len(lines) == 0 {
-		return nil, fmt.Errorf("empty YAML document")
-	}
-	node, next, err := parseBlock(lines, 0, lines[0].indent)
-	if err != nil {
-		return nil, err
-	}
-	if next != len(lines) {
-		return nil, fmt.Errorf("line %d: unexpected indentation", lines[next].number)
-	}
-	return node, nil
-}
-
-func scan(r io.Reader) ([]sourceLine, error) {
 	scanner := bufio.NewScanner(r)
-	scanner.Buffer(make([]byte, 4096), 64*1024)
+	scanner.Buffer(make([]byte, 1024), 1<<20)
 	var lines []sourceLine
-	seenContent := false
-	seenEnd := false
-	lineNumber := 0
-	for scanner.Scan() {
-		lineNumber++
+	documentSeen := false
+	for number := 1; scanner.Scan(); number++ {
 		raw := strings.TrimRight(scanner.Text(), " \r")
 		if strings.ContainsRune(raw, '\t') {
-			return nil, fmt.Errorf("line %d: tabs are not allowed", lineNumber)
-		}
-		raw = stripComment(raw)
-		if strings.TrimSpace(raw) == "" {
-			continue
+			return nil, fmt.Errorf("line %d: tabs are not allowed", number)
 		}
 		trimmed := strings.TrimSpace(raw)
-		switch trimmed {
-		case "---":
-			if seenContent {
-				return nil, fmt.Errorf("line %d: multiple YAML documents are not allowed", lineNumber)
+		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+			continue
+		}
+		if trimmed == "---" {
+			if documentSeen || len(lines) != 0 {
+				return nil, fmt.Errorf("line %d: multiple YAML documents are not supported", number)
 			}
-			seenContent = true
-			continue
-		case "...":
-			seenEnd = true
+			documentSeen = true
 			continue
 		}
-		if seenEnd {
-			return nil, fmt.Errorf("line %d: content after YAML document end", lineNumber)
+		if trimmed == "..." {
+			continue
 		}
-		seenContent = true
+		documentSeen = true
 		indent := len(raw) - len(strings.TrimLeft(raw, " "))
 		if indent%2 != 0 {
-			return nil, fmt.Errorf("line %d: indentation must use multiples of two spaces", lineNumber)
+			return nil, fmt.Errorf("line %d: indentation must use multiples of two spaces", number)
 		}
-		lines = append(lines, sourceLine{indent: indent, text: strings.TrimSpace(raw), number: lineNumber})
+		text, err := stripComment(strings.TrimSpace(raw))
+		if err != nil {
+			return nil, fmt.Errorf("line %d: %w", number, err)
+		}
+		if text == "" {
+			continue
+		}
+		lines = append(lines, sourceLine{indent: indent, text: text, line: number})
 	}
 	if err := scanner.Err(); err != nil {
 		return nil, fmt.Errorf("read YAML: %w", err)
 	}
-	return lines, nil
+	if len(lines) == 0 {
+		return nil, fmt.Errorf("empty YAML document")
+	}
+	if lines[0].indent != 0 {
+		return nil, fmt.Errorf("line %d: document must start at indentation zero", lines[0].line)
+	}
+	index := 0
+	node, err := parseBlock(lines, &index, 0)
+	if err != nil {
+		return nil, err
+	}
+	if index != len(lines) {
+		return nil, fmt.Errorf("line %d: unexpected YAML content", lines[index].line)
+	}
+	return node, nil
 }
 
-func stripComment(s string) string {
-	var quote rune
+func parseBlock(lines []sourceLine, index *int, indent int) (*Node, error) {
+	if *index >= len(lines) {
+		return nil, fmt.Errorf("unexpected end of YAML document")
+	}
+	line := lines[*index]
+	if line.indent != indent {
+		return nil, fmt.Errorf("line %d: unexpected indentation", line.line)
+	}
+	if strings.HasPrefix(line.text, "- ") || line.text == "-" {
+		return parseSequence(lines, index, indent)
+	}
+	return parseMapping(lines, index, indent)
+}
+
+func parseMapping(lines []sourceLine, index *int, indent int) (*Node, error) {
+	node := &Node{Kind: Mapping, Line: lines[*index].line}
+	seen := map[string]struct{}{}
+	for *index < len(lines) {
+		line := lines[*index]
+		if line.indent < indent {
+			break
+		}
+		if line.indent > indent {
+			return nil, fmt.Errorf("line %d: unexpected indentation", line.line)
+		}
+		if strings.HasPrefix(line.text, "- ") || line.text == "-" {
+			return nil, fmt.Errorf("line %d: sequence item where mapping key was expected", line.line)
+		}
+		key, value, hasValue, err := splitMapping(line.text)
+		if err != nil {
+			return nil, fmt.Errorf("line %d: %w", line.line, err)
+		}
+		if _, exists := seen[key]; exists {
+			return nil, fmt.Errorf("line %d: duplicate key %q", line.line, key)
+		}
+		seen[key] = struct{}{}
+		*index++
+		var child *Node
+		if hasValue {
+			decoded, err := decodeScalar(value)
+			if err != nil {
+				return nil, fmt.Errorf("line %d: %w", line.line, err)
+			}
+			child = &Node{Kind: Scalar, Value: decoded, Line: line.line}
+		} else {
+			if *index >= len(lines) || lines[*index].indent <= indent {
+				return nil, fmt.Errorf("line %d: key %q requires a nested value", line.line, key)
+			}
+			if lines[*index].indent != indent+2 {
+				return nil, fmt.Errorf("line %d: nested value for %q must be indented by two spaces", lines[*index].line, key)
+			}
+			child, err = parseBlock(lines, index, indent+2)
+			if err != nil {
+				return nil, err
+			}
+		}
+		node.Pairs = append(node.Pairs, Pair{Key: key, Value: child})
+	}
+	return node, nil
+}
+
+func parseSequence(lines []sourceLine, index *int, indent int) (*Node, error) {
+	node := &Node{Kind: Sequence, Line: lines[*index].line}
+	for *index < len(lines) {
+		line := lines[*index]
+		if line.indent < indent {
+			break
+		}
+		if line.indent > indent {
+			return nil, fmt.Errorf("line %d: unexpected indentation", line.line)
+		}
+		if !strings.HasPrefix(line.text, "-") {
+			break
+		}
+		if line.text == "-" {
+			return nil, fmt.Errorf("line %d: nested sequence objects are not supported", line.line)
+		}
+		if !strings.HasPrefix(line.text, "- ") {
+			return nil, fmt.Errorf("line %d: malformed sequence item", line.line)
+		}
+		value := strings.TrimSpace(strings.TrimPrefix(line.text, "- "))
+		if value == "" {
+			return nil, fmt.Errorf("line %d: empty sequence item", line.line)
+		}
+		decoded, err := decodeScalar(value)
+		if err != nil {
+			return nil, fmt.Errorf("line %d: %w", line.line, err)
+		}
+		node.Values = append(node.Values, &Node{Kind: Scalar, Value: decoded, Line: line.line})
+		*index++
+	}
+	return node, nil
+}
+
+func splitMapping(text string) (string, string, bool, error) {
+	quote := rune(0)
 	escaped := false
-	for i, r := range s {
+	for position, r := range text {
 		if escaped {
 			escaped = false
 			continue
@@ -117,156 +203,81 @@ func stripComment(s string) string {
 			escaped = true
 			continue
 		}
-		if quote != 0 {
-			if r == quote {
+		if r == '\'' || r == '"' {
+			if quote == 0 {
+				quote = r
+			} else if quote == r {
 				quote = 0
 			}
 			continue
 		}
-		if r == '\'' || r == '"' {
-			quote = r
-			continue
-		}
-		if r == '#' && (i == 0 || s[i-1] == ' ') {
-			return strings.TrimRight(s[:i], " ")
+		if r == ':' && quote == 0 {
+			key := strings.TrimSpace(text[:position])
+			if key == "" {
+				return "", "", false, fmt.Errorf("empty mapping key")
+			}
+			if strings.ContainsAny(key, "{}[],&*!|>@`") {
+				return "", "", false, fmt.Errorf("unsupported mapping key %q", key)
+			}
+			value := strings.TrimSpace(text[position+1:])
+			return key, value, value != "", nil
 		}
 	}
-	return s
+	return "", "", false, fmt.Errorf("mapping entry is missing ':'")
 }
 
-func parseBlock(lines []sourceLine, index, indent int) (*Node, int, error) {
-	if index >= len(lines) {
-		return nil, index, fmt.Errorf("unexpected end of YAML")
+func decodeScalar(value string) (string, error) {
+	if value == "" {
+		return "", nil
 	}
-	if lines[index].indent != indent {
-		return nil, index, fmt.Errorf("line %d: unexpected indentation", lines[index].number)
+	if strings.HasPrefix(value, "[") || strings.HasPrefix(value, "{") || strings.HasPrefix(value, "&") || strings.HasPrefix(value, "*") || strings.HasPrefix(value, "!") || strings.HasPrefix(value, "|") || strings.HasPrefix(value, ">") {
+		return "", fmt.Errorf("unsupported YAML scalar %q", value)
 	}
-	if strings.HasPrefix(lines[index].text, "-") {
-		return parseSequence(lines, index, indent)
+	if value[0] == '\'' {
+		if len(value) < 2 || value[len(value)-1] != '\'' {
+			return "", fmt.Errorf("unterminated single-quoted scalar")
+		}
+		return strings.ReplaceAll(value[1:len(value)-1], "''", "'"), nil
 	}
-	return parseMapping(lines, index, indent)
-}
-
-func parseMapping(lines []sourceLine, index, indent int) (*Node, int, error) {
-	node := &Node{Kind: Mapping, Line: lines[index].number}
-	seen := make(map[string]struct{})
-	for index < len(lines) {
-		line := lines[index]
-		if line.indent < indent {
-			break
+	if value[0] == '"' {
+		if len(value) < 2 || value[len(value)-1] != '"' {
+			return "", fmt.Errorf("unterminated double-quoted scalar")
 		}
-		if line.indent > indent {
-			return nil, index, fmt.Errorf("line %d: unexpected indentation", line.number)
-		}
-		if strings.HasPrefix(line.text, "-") {
-			break
-		}
-		key, rawValue, err := splitPair(line.text)
+		decoded, err := strconv.Unquote(value)
 		if err != nil {
-			return nil, index, fmt.Errorf("line %d: %w", line.number, err)
+			return "", fmt.Errorf("invalid double-quoted scalar: %w", err)
 		}
-		if _, exists := seen[key]; exists {
-			return nil, index, fmt.Errorf("line %d: duplicate field %q", line.number, key)
-		}
-		seen[key] = struct{}{}
-		index++
-		var value *Node
-		if rawValue != "" {
-			value, err = scalarNode(rawValue, line.number)
-			if err != nil {
-				return nil, index, err
-			}
-		} else {
-			if index >= len(lines) || lines[index].indent <= indent {
-				return nil, index, fmt.Errorf("line %d: field %q requires a value", line.number, key)
-			}
-			value, index, err = parseBlock(lines, index, lines[index].indent)
-			if err != nil {
-				return nil, index, err
-			}
-		}
-		node.Pairs = append(node.Pairs, Pair{Key: key, Value: value, Line: line.number})
+		return decoded, nil
 	}
-	return node, index, nil
+	return strings.TrimSpace(value), nil
 }
 
-func parseSequence(lines []sourceLine, index, indent int) (*Node, int, error) {
-	node := &Node{Kind: Sequence, Line: lines[index].number}
-	for index < len(lines) {
-		line := lines[index]
-		if line.indent < indent {
-			break
-		}
-		if line.indent > indent {
-			return nil, index, fmt.Errorf("line %d: nested sequence values are not supported", line.number)
-		}
-		if !strings.HasPrefix(line.text, "-") {
-			break
-		}
-		raw := strings.TrimSpace(strings.TrimPrefix(line.text, "-"))
-		if raw == "" {
-			return nil, index, fmt.Errorf("line %d: sequence item requires a scalar value", line.number)
-		}
-		value, err := scalarNode(raw, line.number)
-		if err != nil {
-			return nil, index, err
-		}
-		node.Values = append(node.Values, value)
-		index++
-	}
-	return node, index, nil
-}
-
-func splitPair(s string) (string, string, error) {
-	quote := byte(0)
+func stripComment(value string) (string, error) {
+	quote := rune(0)
 	escaped := false
-	for i := 0; i < len(s); i++ {
-		c := s[i]
+	for position, r := range value {
 		if escaped {
 			escaped = false
 			continue
 		}
-		if quote == '"' && c == '\\' {
+		if quote == '"' && r == '\\' {
 			escaped = true
 			continue
 		}
-		if quote != 0 {
-			if c == quote {
+		if r == '\'' || r == '"' {
+			if quote == 0 {
+				quote = r
+			} else if quote == r {
 				quote = 0
 			}
 			continue
 		}
-		if c == '\'' || c == '"' {
-			quote = c
-			continue
-		}
-		if c == ':' {
-			key := strings.TrimSpace(s[:i])
-			if !keyPattern.MatchString(key) {
-				return "", "", fmt.Errorf("invalid field name %q", key)
-			}
-			return key, strings.TrimSpace(s[i+1:]), nil
+		if r == '#' && quote == 0 && (position == 0 || value[position-1] == ' ') {
+			return strings.TrimSpace(value[:position]), nil
 		}
 	}
-	return "", "", fmt.Errorf("expected field: value")
-}
-
-func scalarNode(raw string, line int) (*Node, error) {
-	if strings.HasPrefix(raw, "[") || strings.HasPrefix(raw, "{") || raw == "|" || raw == ">" {
-		return nil, fmt.Errorf("line %d: flow collections and multiline scalars are not supported", line)
+	if quote != 0 {
+		return "", fmt.Errorf("unterminated quoted scalar")
 	}
-	if strings.HasPrefix(raw, "&") || strings.HasPrefix(raw, "*") || strings.HasPrefix(raw, "!") {
-		return nil, fmt.Errorf("line %d: YAML anchors, aliases, and tags are not supported", line)
-	}
-	value := raw
-	if len(raw) >= 2 && raw[0] == '"' && raw[len(raw)-1] == '"' {
-		decoded, err := strconv.Unquote(raw)
-		if err != nil {
-			return nil, fmt.Errorf("line %d: invalid quoted scalar: %w", line, err)
-		}
-		value = decoded
-	} else if len(raw) >= 2 && raw[0] == '\'' && raw[len(raw)-1] == '\'' {
-		value = strings.ReplaceAll(raw[1:len(raw)-1], "''", "'")
-	}
-	return &Node{Kind: Scalar, Value: value, Line: line}, nil
+	return strings.TrimSpace(value), nil
 }

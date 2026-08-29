@@ -300,3 +300,34 @@ func TestDecodeCursorRejectsTrailingJSONValue(t *testing.T) {
 		t.Fatal("cursor with a second JSON value was accepted")
 	}
 }
+
+func TestNFTReconcileRequiresWritePermissionAndInvokesWorker(t *testing.T) {
+	fixture := newControlFixture(t)
+	reconciler := &fakeNFTReconciler{}
+	handler := NewHandler(decision.NewService(fixture.database, fixture.clock), fixture.database, fixture.clock, []string{"panel-a"}, 4096, reconciler)
+	request := httptest.NewRequest(http.MethodPost, "/v1/nft/reconcile", nil)
+	identity := sourceauth.Identity{SourceID: "admin", Permissions: map[config.Permission]struct{}{config.PermissionWriteAdmin: {}}}
+	request = request.WithContext(sourceauth.WithIdentity(request.Context(), identity))
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusOK || reconciler.calls != 1 {
+		t.Fatalf("status=%d calls=%d body=%s", response.Code, reconciler.calls, response.Body.String())
+	}
+
+	request = httptest.NewRequest(http.MethodPost, "/v1/nft/reconcile", nil)
+	request = request.WithContext(sourceauth.WithIdentity(request.Context(), sourceauth.Identity{SourceID: "reader", Permissions: map[config.Permission]struct{}{config.PermissionReadAdmin: {}}}))
+	response = httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusForbidden || reconciler.calls != 1 {
+		t.Fatalf("status=%d calls=%d", response.Code, reconciler.calls)
+	}
+}
+
+type fakeNFTReconciler struct {
+	calls    int
+	triggers int
+	err      error
+}
+
+func (f *fakeNFTReconciler) SyncOnce(context.Context) error { f.calls++; return f.err }
+func (f *fakeNFTReconciler) Trigger()                       { f.triggers++ }

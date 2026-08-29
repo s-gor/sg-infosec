@@ -47,9 +47,7 @@ func (h *Handler) handleDecisionCheck(w http.ResponseWriter, request *http.Reque
 		writeError(w, http.StatusInternalServerError, "internal_error", "decision could not be checked", requestID)
 		return
 	}
-	response := protocol.DecisionCheckResponse{
-		Blocked: result.Blocked, DecisionID: result.DecisionID, ReasonCode: result.ReasonCode,
-	}
+	response := protocol.DecisionCheckResponse{Blocked: result.Blocked, DecisionID: result.DecisionID, ReasonCode: result.ReasonCode}
 	if result.Blocked {
 		expiresAt := result.ExpiresAt
 		response.ExpiresAt = &expiresAt
@@ -132,6 +130,14 @@ func (h *Handler) handleManualDecision(w http.ResponseWriter, request *http.Requ
 		writeError(w, http.StatusBadRequest, "invalid_scope", "scope is not supported", requestID)
 		return
 	}
+	backend := model.BackendApplication
+	if body.Backend != "" {
+		backend, err = model.ParseBackend(body.Backend)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid_backend", "backend is not supported", requestID)
+			return
+		}
+	}
 	ip, err := netip.ParseAddr(body.IP)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid_ip", "ip must be a valid IPv4 or IPv6 address", requestID)
@@ -142,11 +148,7 @@ func (h *Handler) handleManualDecision(w http.ResponseWriter, request *http.Requ
 		writeError(w, http.StatusBadRequest, "invalid_duration", "duration is invalid", requestID)
 		return
 	}
-	created, err := h.decisions.CreateManual(request.Context(), decision.ManualInput{
-		SourceID: body.SourceID, Scope: scope, IP: ip.Unmap(), Duration: duration,
-		Reason: body.Reason, OverrideAllowlist: body.OverrideAllowlist,
-		Actor: identity.SourceID, RequestID: requestID,
-	})
+	created, err := h.decisions.CreateManual(request.Context(), decision.ManualInput{SourceID: body.SourceID, Scope: scope, Backend: backend, IP: ip.Unmap(), Duration: duration, Reason: body.Reason, OverrideAllowlist: body.OverrideAllowlist, Actor: identity.SourceID, RequestID: requestID})
 	if err != nil {
 		switch {
 		case errors.Is(err, decision.ErrAllowlisted):
@@ -159,6 +161,9 @@ func (h *Handler) handleManualDecision(w http.ResponseWriter, request *http.Requ
 			writeError(w, http.StatusInternalServerError, "internal_error", "manual decision could not be created", requestID)
 		}
 		return
+	}
+	if created.Backend == model.BackendNFTables && h.nft != nil {
+		h.nft.Trigger()
 	}
 	writeJSON(w, http.StatusCreated, decisionView(created))
 }
@@ -191,6 +196,9 @@ func (h *Handler) handleDecisionRevoke(w http.ResponseWriter, request *http.Requ
 			writeError(w, http.StatusInternalServerError, "internal_error", "decision could not be revoked", requestID)
 		}
 		return
+	}
+	if changed && h.nft != nil {
+		h.nft.Trigger()
 	}
 	writeJSON(w, http.StatusOK, protocol.ActionResponse{Changed: changed, RequestID: requestID})
 }

@@ -15,6 +15,10 @@
 - SQLite remains the source of truth; kernel timeout sets are an enforcement cache;
 - AWG2, AWG3, AWG3.1, Xray, Mihomo, subscriptions and shared HTTPS routes are never targeted.
 
+## Status
+
+Implementation complete and validated against the real Linux nftables kernel API in an isolated user/network namespace. Host installation still requires the target Ubuntu/Debian system validation described below.
+
 ## Tasks
 
 1. Add the public enforcer protocol, strict target policy, normalized entries, backend interface and serialized service.
@@ -26,4 +30,12 @@
 7. Connect `sg-infosecd` to active `nftables` decisions with retry and startup reconciliation.
 8. Extend CLI with `nft status`, `nft list` and `nft reconcile`; add VM validation instructions.
 
-Each task is published as a separate commit or branch checkpoint. No target branch is updated until the full plan passes review and system validation.
+All implementation tasks are complete. The final release gate requires:
+
+- `make check`;
+- `bash scripts/smoke-resource.sh`;
+- `bash scripts/smoke-kernel-netns.sh`;
+- systemd unit verification;
+- clean install, update, uninstall and purge validation on Ubuntu 22.04/24.04.
+
+No target/default branch is updated until this gate and review are accepted.

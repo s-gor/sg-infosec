@@ -274,3 +274,86 @@ The CLI uses a two-second default timeout and distinguishes permission errors fr
 ## Compatibility
 
 Protocol v1 permits additive optional response fields. Existing field meanings, route methods, authorization semantics and required request fields cannot be removed or changed within v1. Incompatible changes require protocol v2.
+
+## Enforcer socket
+
+The privileged enforcer listens only on `/run/sg-infosec/enforcer.sock`. The peer UID is read from `SO_PEERCRED`. Only UID `0` and the configured non-root `sg-infosec` UID are authorized.
+
+The enforcer owns only `inet sg_infosec`. Every mutation is validated against a fixed target policy and the exact owned schema before a netlink transaction is sent. It never accepts an nftables expression, table name, chain name or set name from a client.
+
+### `POST /v1/ensure`
+
+```json
+{
+  "request_id": "ctl.ensure-1",
+  "schema_version": "v1"
+}
+```
+
+Creates missing owned objects. Modified or unknown objects inside `inet sg_infosec` return an error and no mutation is applied.
+
+### `POST /v1/add`
+
+```json
+{
+  "request_id": "ctl.add-1",
+  "entry": {
+    "scope": "ssh",
+    "protocol": "tcp",
+    "port": 22,
+    "ip": "203.0.113.10",
+    "expires_at": "2026-08-29T20:00:00Z"
+  }
+}
+```
+
+### `POST /v1/remove`
+
+```json
+{
+  "request_id": "ctl.remove-1",
+  "key": {
+    "scope": "ssh",
+    "protocol": "tcp",
+    "port": 22,
+    "ip": "203.0.113.10"
+  }
+}
+```
+
+### `GET /v1/list`
+
+```json
+{
+  "entries": [
+    {
+      "scope": "ssh",
+      "protocol": "tcp",
+      "port": 22,
+      "ip": "203.0.113.10",
+      "expires_at": "2026-08-29T20:00:00Z"
+    }
+  ]
+}
+```
+
+### `POST /v1/reconcile`
+
+```json
+{
+  "request_id": "core-reconcile-1",
+  "entries": [
+    {
+      "scope": "ssh",
+      "protocol": "tcp",
+      "port": 22,
+      "ip": "2001:db8::10",
+      "expires_at": "2026-08-29T20:00:00Z"
+    }
+  ]
+}
+```
+
+The complete desired state is validated before a single atomic element transaction is applied. The response reports `created`, `updated`, `removed` and `unchanged` counts.
+
+The default enforcer target policy accepts only `ssh/tcp/22`. A `panel-port` entry is accepted only when that exact TCP port was explicitly configured in the enforcer process. VPN ports `585`, `586` and `587`, application scopes and UDP are rejected.

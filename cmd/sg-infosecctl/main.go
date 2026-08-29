@@ -10,6 +10,7 @@ import (
 	"github.com/s-gor/sg-infosec/internal/cli"
 	"github.com/s-gor/sg-infosec/internal/config"
 	"github.com/s-gor/sg-infosec/pkg/client"
+	"github.com/s-gor/sg-infosec/pkg/enforcerclient"
 )
 
 func main() {
@@ -27,6 +28,9 @@ func run(args []string, stdout, stderr io.Writer) int {
 	return cli.Run(args, stdout, stderr, cli.Dependencies{
 		NewClient: func(socketPath string) cli.Service {
 			return client.New(socketPath)
+		},
+		NewEnforcerClient: func(socketPath string) cli.EnforcerService {
+			return enforcerclient.New(socketPath)
 		},
 		ValidateConfig: func(path string) error {
 			_, err := config.Load(path)

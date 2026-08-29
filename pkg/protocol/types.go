@@ -39,6 +39,7 @@ type DecisionCheckResponse struct {
 type ManualDecisionRequest struct {
 	SourceID          string `json:"source_id"`
 	Scope             string `json:"scope"`
+	Backend           string `json:"backend,omitempty"`
 	IP                string `json:"ip"`
 	Duration          string `json:"duration"`
 	Reason            string `json:"reason"`
