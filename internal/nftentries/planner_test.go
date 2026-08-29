@@ -136,3 +136,31 @@ func ids(elements []Element) []string {
 	}
 	return result
 }
+
+func TestDecodeRestoresTypedEntry(t *testing.T) {
+	now := time.Date(2026, 8, 29, 19, 0, 0, 0, time.UTC)
+	input := Element{SetName: "panel_v6", Key: append(netip.MustParseAddr("2001:db8::7").AsSlice(), 0xf7, 0xd3), Timeout: time.Hour}
+	entry, err := Decode(now, input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if entry.Scope != model.ScopePanelPort || entry.Port != 63443 || entry.IP.String() != "2001:db8::7" || !entry.ExpiresAt.Equal(now.Add(time.Hour)) {
+		t.Fatalf("entry=%+v", entry)
+	}
+}
+
+func TestEncodeKeyMatchesElementStableID(t *testing.T) {
+	now := time.Date(2026, 8, 29, 19, 0, 0, 0, time.UTC)
+	input := entry(model.ScopeSSH, "203.0.113.7", 22, now.Add(time.Hour))
+	element, err := Encode(now, input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	key, err := EncodeKey(input.Key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if key.StableID() != element.StableID() {
+		t.Fatalf("key=%+v element=%+v", key, element)
+	}
+}

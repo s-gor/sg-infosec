@@ -22,6 +22,15 @@ var (
 	ErrStateConflict  = errors.New("nftables set state conflict")
 )
 
+type ElementKey struct {
+	SetName string
+	Key     []byte
+}
+
+func (k ElementKey) StableID() string {
+	return k.SetName + "/" + hex.EncodeToString(k.Key)
+}
+
 type Element struct {
 	SetName string
 	Key     []byte
@@ -29,7 +38,11 @@ type Element struct {
 }
 
 func (e Element) StableID() string {
-	return e.SetName + "/" + hex.EncodeToString(e.Key)
+	return ElementKey{SetName: e.SetName, Key: e.Key}.StableID()
+}
+
+func (e Element) ElementKey() ElementKey {
+	return ElementKey{SetName: e.SetName, Key: append([]byte(nil), e.Key...)}
 }
 
 type Plan struct {
@@ -39,45 +52,102 @@ type Plan struct {
 	Unchanged int
 }
 
-func Encode(now time.Time, entry enforcer.Entry) (Element, error) {
-	now = now.UTC()
-	if entry.Protocol != enforcer.ProtocolTCP || !entry.ExpiresAt.After(now) ||
-		!entry.IP.IsValid() || entry.IP.IsUnspecified() || entry.IP.IsMulticast() || entry.IP.IsLoopback() || entry.IP.Zone() != "" {
-		return Element{}, ErrInvalidElement
+func EncodeKey(key enforcer.Key) (ElementKey, error) {
+	if key.Protocol != enforcer.ProtocolTCP || !key.IP.IsValid() || key.IP.IsUnspecified() ||
+		key.IP.IsMulticast() || key.IP.IsLoopback() || key.IP.Zone() != "" {
+		return ElementKey{}, ErrInvalidElement
 	}
-	address := entry.IP.Unmap()
+	address := key.IP.Unmap()
 	var setName string
-	var key []byte
-	switch entry.Scope {
+	var encoded []byte
+	switch key.Scope {
 	case model.ScopeSSH:
-		if entry.Port != 22 {
-			return Element{}, ErrInvalidElement
+		if key.Port != 22 {
+			return ElementKey{}, ErrInvalidElement
 		}
 		if address.Is4() {
 			value := address.As4()
-			setName, key = "ssh_v4", append([]byte(nil), value[:]...)
+			setName, encoded = "ssh_v4", append([]byte(nil), value[:]...)
 		} else {
 			value := address.As16()
-			setName, key = "ssh_v6", append([]byte(nil), value[:]...)
+			setName, encoded = "ssh_v6", append([]byte(nil), value[:]...)
 		}
 	case model.ScopePanelPort:
-		if entry.Port == 0 || reservedVPNPort(entry.Port) {
-			return Element{}, ErrInvalidElement
+		if key.Port == 0 || reservedVPNPort(key.Port) {
+			return ElementKey{}, ErrInvalidElement
 		}
 		if address.Is4() {
 			value := address.As4()
-			setName, key = "panel_v4", append([]byte(nil), value[:]...)
+			setName, encoded = "panel_v4", append([]byte(nil), value[:]...)
 		} else {
 			value := address.As16()
-			setName, key = "panel_v6", append([]byte(nil), value[:]...)
+			setName, encoded = "panel_v6", append([]byte(nil), value[:]...)
 		}
 		port := make([]byte, 2)
-		binary.BigEndian.PutUint16(port, entry.Port)
-		key = append(key, port...)
+		binary.BigEndian.PutUint16(port, key.Port)
+		encoded = append(encoded, port...)
 	default:
+		return ElementKey{}, ErrInvalidElement
+	}
+	result := ElementKey{SetName: setName, Key: encoded}
+	if err := validateKey(result); err != nil {
+		return ElementKey{}, err
+	}
+	return result, nil
+}
+
+func Encode(now time.Time, entry enforcer.Entry) (Element, error) {
+	now = now.UTC()
+	if !entry.ExpiresAt.After(now) {
 		return Element{}, ErrInvalidElement
 	}
-	return Element{SetName: setName, Key: key, Timeout: ceilMillisecond(entry.ExpiresAt.UTC().Sub(now))}, nil
+	key, err := EncodeKey(entry.Key)
+	if err != nil {
+		return Element{}, err
+	}
+	return Element{SetName: key.SetName, Key: key.Key, Timeout: ceilMillisecond(entry.ExpiresAt.UTC().Sub(now))}, nil
+}
+
+func Decode(now time.Time, element Element) (enforcer.Entry, error) {
+	if err := validateElement(element); err != nil {
+		return enforcer.Entry{}, err
+	}
+	now = now.UTC()
+	key, err := decodeKey(element.ElementKey())
+	if err != nil {
+		return enforcer.Entry{}, err
+	}
+	return enforcer.Entry{Key: key, ExpiresAt: now.Add(element.Timeout).UTC()}, nil
+}
+
+func decodeKey(element ElementKey) (enforcer.Key, error) {
+	if err := validateKey(element); err != nil {
+		return enforcer.Key{}, err
+	}
+	var scope model.Scope
+	var port uint16
+	addressLength := len(element.Key)
+	switch element.SetName {
+	case "ssh_v4", "ssh_v6":
+		scope, port = model.ScopeSSH, 22
+	case "panel_v4", "panel_v6":
+		scope = model.ScopePanelPort
+		addressLength -= 2
+		port = binary.BigEndian.Uint16(element.Key[addressLength:])
+	default:
+		return enforcer.Key{}, ErrInvalidElement
+	}
+	var address netip.Addr
+	if addressLength == 4 {
+		var raw [4]byte
+		copy(raw[:], element.Key[:addressLength])
+		address = netip.AddrFrom4(raw)
+	} else {
+		var raw [16]byte
+		copy(raw[:], element.Key[:addressLength])
+		address = netip.AddrFrom16(raw)
+	}
+	return enforcer.Key{Scope: scope, Protocol: enforcer.ProtocolTCP, Port: port, IP: address}, nil
 }
 
 func PlanReconcile(current, desired []Element) (Plan, error) {
@@ -132,15 +202,23 @@ func index(elements []Element, kernelState bool) (map[string]Element, error) {
 }
 
 func validateElement(element Element) error {
+	if element.Timeout <= 0 {
+		return ErrInvalidElement
+	}
+	return validateKey(element.ElementKey())
+}
+
+func validateKey(element ElementKey) error {
 	lengths := map[string]int{"ssh_v4": 4, "ssh_v6": 16, "panel_v4": 6, "panel_v6": 18}
 	length, ok := lengths[element.SetName]
-	if !ok || len(element.Key) != length || element.Timeout <= 0 {
+	if !ok || len(element.Key) != length {
 		return ErrInvalidElement
 	}
 	addressLength := length
 	if element.SetName == "panel_v4" || element.SetName == "panel_v6" {
 		addressLength -= 2
-		if reservedVPNPort(binary.BigEndian.Uint16(element.Key[addressLength:])) {
+		port := binary.BigEndian.Uint16(element.Key[addressLength:])
+		if port == 0 || reservedVPNPort(port) {
 			return ErrInvalidElement
 		}
 	}
