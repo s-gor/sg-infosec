@@ -35,3 +35,7 @@ The first deployable security service targets Linux servers. The protocol and de
 - Android can use a client/agent library and, where appropriate, an Android `VpnService`-based adapter. It will not run the Linux systemd or nftables components.
 
 Windows and Android support will be separate platform packages, not the Linux server binary copied unchanged.
+
+## SQLite development dependency
+
+The current Linux store uses the system SQLite library through CGO. Local builds therefore require SQLite development headers and `pkg-config`. The dependency is isolated in `internal/store`; builds without CGO still compile and return an explicit runtime error when the SQLite store is opened.
