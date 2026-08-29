@@ -57,3 +57,11 @@ type ErrorResponse struct {
 	Code    string `json:"code"`
 	Message string `json:"message"`
 }
+
+type ActionResponse struct {
+	OK bool `json:"ok"`
+}
+
+type ListResponse struct {
+	Entries []Entry `json:"entries"`
+}
