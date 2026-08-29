@@ -1,7 +1,7 @@
 .PHONY: fmt-check test race vet build check clean
 
 fmt-check:
-	@test -z "$$(gofmt -l cmd internal)" || { echo "gofmt required:"; gofmt -l cmd internal; exit 1; }
+	@test -z "$$(gofmt -l cmd internal pkg)" || { echo "gofmt required:"; gofmt -l cmd internal pkg; exit 1; }
 
 test:
 	go test ./...
