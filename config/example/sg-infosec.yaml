@@ -1,0 +1,12 @@
+database_path: /var/lib/sg-infosec/sg-infosec.db
+events_socket: /run/sg-infosec/events.sock
+control_socket: /run/sg-infosec/control.sock
+event_body_limit: 16384
+sources_dir: sources.d
+policies_dir: policies.d
+retention:
+  events: 168h
+  audit: 2160h
+allowlist:
+  - 127.0.0.1
+  - ::1

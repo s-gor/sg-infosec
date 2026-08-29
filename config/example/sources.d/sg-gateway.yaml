@@ -1,0 +1,11 @@
+source_id: sg-gateway
+user: sg-gateway
+group: sg-gateway
+allowed_events:
+  - auth.failed
+  - api.auth_failed
+allowed_scopes:
+  - admin-login
+  - admin-api
+permissions:
+  - check_decisions
