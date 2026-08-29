@@ -239,3 +239,15 @@ func (b *recordingBackend) Reconcile(_ context.Context, entries []Entry) (Reconc
 	b.reconciled = append([]Entry(nil), entries...)
 	return b.report, nil
 }
+
+func TestNewPolicyRejectsReservedVPNPanelPorts(t *testing.T) {
+	for _, port := range []uint16{585, 586, 587} {
+		_, err := NewPolicy([]AllowedTarget{
+			{Scope: model.ScopeSSH, Protocol: ProtocolTCP, Port: 22},
+			{Scope: model.ScopePanelPort, Protocol: ProtocolTCP, Port: port},
+		}, time.Hour, 100)
+		if !errors.Is(err, ErrInvalidPolicy) {
+			t.Fatalf("port %d error=%v", port, err)
+		}
+	}
+}

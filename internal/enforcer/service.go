@@ -105,7 +105,8 @@ func NewPolicy(targets []AllowedTarget, maxTTL time.Duration, maxEntries int) (P
 		maxTTL:  maxTTL, maxEntries: maxEntries,
 	}
 	for _, target := range targets {
-		if !isEnforcerScope(target.Scope) || target.Protocol != ProtocolTCP || target.Port == 0 {
+		if !isEnforcerScope(target.Scope) || target.Protocol != ProtocolTCP || target.Port == 0 ||
+			(target.Scope == model.ScopePanelPort && isReservedVPNPort(target.Port)) {
 			return Policy{}, ErrInvalidPolicy
 		}
 		key := targetID(target.Scope, target.Protocol, target.Port)
@@ -179,6 +180,10 @@ func (p Policy) NormalizeEntries(now time.Time, inputs []enforcerprotocol.Entry)
 
 func isEnforcerScope(scope model.Scope) bool {
 	return scope == model.ScopeSSH || scope == model.ScopePanelPort
+}
+
+func isReservedVPNPort(port uint16) bool {
+	return port == 585 || port == 586 || port == 587
 }
 
 func targetID(scope model.Scope, protocol enforcerprotocol.Protocol, port uint16) string {
