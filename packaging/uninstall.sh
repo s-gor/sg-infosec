@@ -17,19 +17,24 @@ fi
 root_path() { printf '%s%s' "$DESTDIR" "$1"; }
 DAEMON_PATH="$(root_path /usr/local/sbin/sg-infosecd)"
 CTL_PATH="$(root_path /usr/local/sbin/sg-infosecctl)"
+ENFORCER_PATH="$(root_path /usr/local/sbin/sg-infosec-enforcerd)"
 UNIT_PATH="$(root_path /etc/systemd/system/sg-infosec.service)"
+ENFORCER_UNIT_PATH="$(root_path /etc/systemd/system/sg-infosec-enforcer.service)"
 TMPFILES_PATH="$(root_path /usr/lib/tmpfiles.d/sg-infosec.conf)"
 CONFIG_ROOT="$(root_path /etc/sg-infosec)"
 STATE_ROOT="$(root_path /var/lib/sg-infosec)"
 RUNTIME_ROOT="$(root_path /run/sg-infosec)"
 
 if [[ -z "$DESTDIR" ]]; then
-    systemctl disable --now sg-infosec.service 2>/dev/null || true
+    systemctl disable --now sg-infosec.service sg-infosec-enforcer.service 2>/dev/null || true
 fi
-rm -f -- "$DAEMON_PATH" "$CTL_PATH" "$UNIT_PATH" "$TMPFILES_PATH"
+if (( PURGE )) && [[ -z "$DESTDIR" && -x "$ENFORCER_PATH" ]]; then
+    "$ENFORCER_PATH" --purge-owned-table
+fi
+rm -f -- "$DAEMON_PATH" "$CTL_PATH" "$ENFORCER_PATH" "$UNIT_PATH" "$ENFORCER_UNIT_PATH" "$TMPFILES_PATH"
 if [[ -z "$DESTDIR" ]]; then
     systemctl daemon-reload
-    systemctl reset-failed sg-infosec.service 2>/dev/null || true
+    systemctl reset-failed sg-infosec.service sg-infosec-enforcer.service 2>/dev/null || true
 fi
 
 if (( PURGE )); then

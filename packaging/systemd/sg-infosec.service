@@ -1,6 +1,7 @@
 [Unit]
 Description=SG InfoSec local security service
-After=local-fs.target
+After=local-fs.target sg-infosec-enforcer.service
+Requires=sg-infosec-enforcer.service
 Before=sg-gateway.service
 
 [Service]

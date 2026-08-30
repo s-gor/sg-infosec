@@ -65,13 +65,13 @@ func TestRunReturnsTwoForConfigurationFailure(t *testing.T) {
 
 func TestRunStartsAndClosesApplication(t *testing.T) {
 	var stdout, stderr bytes.Buffer
-	application := &fakeApp{}
+	fakeApplication := &fakeApp{}
 	code := runWith([]string{"--config", "ok.yaml"}, &stdout, &stderr, runtimeDependencies{
 		loadConfig: func(string) (config.Config, error) { return config.Config{}, nil },
-		newApp:     func(config.Config) (application, error) { return application, nil },
+		newApp:     func(config.Config) (application, error) { return fakeApplication, nil },
 		context:    func() (context.Context, context.CancelFunc) { return context.WithCancel(context.Background()) },
 	})
-	if code != 0 || !application.ran || !application.closed {
-		t.Fatalf("code=%d app=%+v stderr=%s", code, application, stderr.String())
+	if code != 0 || !fakeApplication.ran || !fakeApplication.closed {
+		t.Fatalf("code=%d app=%+v stderr=%s", code, fakeApplication, stderr.String())
 	}
 }

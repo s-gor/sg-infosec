@@ -86,7 +86,7 @@ func TestInstallerPreservesConfigAndGrantsGatewaySocketAccess(t *testing.T) {
 		"install_if_missing",
 		"usermod -a -G \"$SERVICE_GROUP\" sg-gateway",
 		"systemd-tmpfiles --create \"$TMPFILES_PATH\"",
-		"systemctl enable --now sg-infosec.service",
+		"systemctl enable --now sg-infosec-enforcer.service sg-infosec.service",
 	)
 	requireNotContains(t, installer, "curl ", "wget ", "sed -i", "iptables", "nft ")
 }
@@ -97,10 +97,11 @@ func TestUninstallerPreservesStateUnlessPurgeIsExplicit(t *testing.T) {
 		"set -Eeuo pipefail",
 		"--purge",
 		"systemctl disable --now sg-infosec.service",
-		"rm -f -- \"$DAEMON_PATH\" \"$CTL_PATH\" \"$UNIT_PATH\" \"$TMPFILES_PATH\"",
+		"rm -f -- \"$DAEMON_PATH\" \"$CTL_PATH\" \"$ENFORCER_PATH\" \"$UNIT_PATH\" \"$ENFORCER_UNIT_PATH\" \"$TMPFILES_PATH\"",
 		"if (( PURGE )); then",
 		`rm -rf -- "$CONFIG_ROOT" "$STATE_ROOT" "$RUNTIME_ROOT"`,
 	)
+	requireNotContains(t, uninstaller, `"$ENFORCER_PATH" --purge-owned-table || true`)
 }
 
 func TestPackagedSourcesSeparateGatewayAndLocalRootAdmin(t *testing.T) {
@@ -128,7 +129,7 @@ func TestInstallerAndUninstallerAreRepeatableInDestdir(t *testing.T) {
 	if err := os.MkdirAll(fakeBin, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{"sg-infosecd", "sg-infosecctl"} {
+	for _, name := range []string{"sg-infosecd", "sg-infosecctl", "sg-infosec-enforcerd"} {
 		path := filepath.Join(fakeBin, name)
 		if err := os.WriteFile(path, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
 			t.Fatal(err)
@@ -139,6 +140,7 @@ func TestInstallerAndUninstallerAreRepeatableInDestdir(t *testing.T) {
 		"DESTDIR="+destdir,
 		"SG_INFOSEC_DAEMON_SOURCE="+filepath.Join(fakeBin, "sg-infosecd"),
 		"SG_INFOSEC_CTL_SOURCE="+filepath.Join(fakeBin, "sg-infosecctl"),
+		"SG_INFOSEC_ENFORCER_SOURCE="+filepath.Join(fakeBin, "sg-infosec-enforcerd"),
 	)
 	run := func(script string, args ...string) {
 		t.Helper()
@@ -166,7 +168,9 @@ func TestInstallerAndUninstallerAreRepeatableInDestdir(t *testing.T) {
 	for _, path := range []string{
 		"usr/local/sbin/sg-infosecd",
 		"usr/local/sbin/sg-infosecctl",
+		"usr/local/sbin/sg-infosec-enforcerd",
 		"etc/systemd/system/sg-infosec.service",
+		"etc/systemd/system/sg-infosec-enforcer.service",
 		"usr/lib/tmpfiles.d/sg-infosec.conf",
 		"etc/sg-infosec/sources.d/local-admin.yaml",
 	} {
@@ -191,4 +195,20 @@ func TestInstallerAndUninstallerAreRepeatableInDestdir(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(destdir, "var/lib/sg-infosec")); !os.IsNotExist(err) {
 		t.Fatalf("purge kept state: %v", err)
 	}
+}
+
+func TestEnforcerServiceIsRootButNarrowlyCapabilityBound(t *testing.T) {
+	service := readRepositoryFile(t, "packaging/systemd/sg-infosec-enforcer.service")
+	requireContains(t, service,
+		"User=root",
+		"ExecStart=/usr/local/sbin/sg-infosec-enforcerd --service-user sg-infosec",
+		"CapabilityBoundingSet=CAP_NET_ADMIN",
+		"AmbientCapabilities=CAP_NET_ADMIN",
+		"RestrictAddressFamilies=AF_UNIX AF_NETLINK",
+		"NoNewPrivileges=true",
+		"ProtectSystem=strict",
+	)
+	requireNotContains(t, service, "AF_INET", "AF_INET6", "CAP_SYS_ADMIN")
+	core := readRepositoryFile(t, "packaging/systemd/sg-infosec.service")
+	requireContains(t, core, "Requires=sg-infosec-enforcer.service")
 }

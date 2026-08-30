@@ -8,14 +8,16 @@ import (
 	"testing"
 
 	"github.com/s-gor/sg-infosec/pkg/client"
+	"github.com/s-gor/sg-infosec/pkg/enforcerprotocol"
 	"github.com/s-gor/sg-infosec/pkg/protocol"
 )
 
 type fakeService struct {
-	health     client.HealthResponse
-	healthErr  error
-	addCalls   int
-	allowCalls int
+	health            client.HealthResponse
+	healthErr         error
+	addCalls          int
+	allowCalls        int
+	nftReconcileCalls int
 }
 
 func (f *fakeService) Health(context.Context) (client.HealthResponse, error) {
@@ -46,6 +48,10 @@ func (f *fakeService) RemoveAllowlist(context.Context, string) (protocol.ActionR
 }
 func (f *fakeService) ListAudit(context.Context, client.ListOptions) (protocol.AuditListResponse, error) {
 	return protocol.AuditListResponse{}, nil
+}
+func (f *fakeService) ReconcileNFT(context.Context) (protocol.ActionResponse, error) {
+	f.nftReconcileCalls++
+	return protocol.ActionResponse{Changed: true, RequestID: "core-request"}, nil
 }
 
 func testDependencies(service Service) Dependencies {
@@ -134,6 +140,57 @@ func TestCLIConfigValidateDoesNotCreateDaemonClient(t *testing.T) {
 		t.Fatalf("code=%d created=%v validated=%q", code, created, validated)
 	}
 	if !strings.Contains(stdout.String(), "valid") {
+		t.Fatalf("stdout=%q", stdout.String())
+	}
+}
+
+type fakeEnforcerService struct {
+	ensureCalls       int
+	listResponse      enforcerprotocol.ListResponse
+	reconcileResponse enforcerprotocol.ReconcileResponse
+	reconcileCalls    int
+}
+
+func (f *fakeEnforcerService) Ensure(context.Context, string) error { f.ensureCalls++; return nil }
+func (f *fakeEnforcerService) List(context.Context) (enforcerprotocol.ListResponse, error) {
+	return f.listResponse, nil
+}
+func (f *fakeEnforcerService) Reconcile(context.Context, string, []enforcerprotocol.Entry) (enforcerprotocol.ReconcileResponse, error) {
+	f.reconcileCalls++
+	return f.reconcileResponse, nil
+}
+
+func TestCLINFTStatusUsesSeparateEnforcerFactory(t *testing.T) {
+	service := &fakeEnforcerService{}
+	deps := Dependencies{NewEnforcerClient: func(path string) EnforcerService {
+		if path != "/tmp/enforcer.sock" {
+			t.Fatalf("path=%q", path)
+		}
+		return service
+	}}
+	var stdout, stderr strings.Builder
+	code := Run([]string{"--enforcer-socket", "/tmp/enforcer.sock", "nft", "status"}, &stdout, &stderr, deps)
+	if code != ExitSuccess || service.ensureCalls != 1 || !strings.Contains(stdout.String(), "ready") {
+		t.Fatalf("code=%d calls=%d stdout=%q stderr=%q", code, service.ensureCalls, stdout.String(), stderr.String())
+	}
+}
+
+func TestCLINFTReconcileUsesCoreSourceOfTruth(t *testing.T) {
+	core := &fakeService{}
+	enforcer := &fakeEnforcerService{}
+	deps := Dependencies{
+		NewClient:         func(string) Service { return core },
+		NewEnforcerClient: func(string) EnforcerService { return enforcer },
+	}
+	var stdout, stderr strings.Builder
+	code := Run([]string{"nft", "reconcile"}, &stdout, &stderr, deps)
+	if code != ExitSuccess {
+		t.Fatalf("code=%d stderr=%q", code, stderr.String())
+	}
+	if core.nftReconcileCalls != 1 || enforcer.reconcileCalls != 0 {
+		t.Fatalf("core calls=%d enforcer calls=%d", core.nftReconcileCalls, enforcer.reconcileCalls)
+	}
+	if !strings.Contains(stdout.String(), "reconciled from SQLite") {
 		t.Fatalf("stdout=%q", stdout.String())
 	}
 }

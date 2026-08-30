@@ -21,7 +21,7 @@ func TestBatchBeginMatchesLinuxUAPIFixture(t *testing.T) {
 		0x01, 0x00,
 		0x44, 0x33, 0x22, 0x11,
 		0x00, 0x00, 0x00, 0x00,
-		0x00, 0x00, 0x00, 0x00,
+		0x00, 0x00, 0x00, 0x0a,
 	}
 	if !bytes.Equal(encoded, want) {
 		t.Fatalf("encoded=% x\nwant   =% x", encoded, want)
@@ -39,7 +39,7 @@ func TestBatchEndMatchesLinuxUAPIFixture(t *testing.T) {
 		0x01, 0x00,
 		0x09, 0x00, 0x00, 0x00,
 		0x00, 0x00, 0x00, 0x00,
-		0x00, 0x00, 0x00, 0x00,
+		0x00, 0x00, 0x00, 0x0a,
 	}
 	if !bytes.Equal(encoded, want) {
 		t.Fatalf("encoded=% x\nwant   =% x", encoded, want)
@@ -126,41 +126,38 @@ func TestDecoderRejectsMalformedLengthsAndAttributes(t *testing.T) {
 	}
 }
 
-func TestClientEncodesAndDecodesThroughRawTransport(t *testing.T) {
+func TestClientSendsWholeBatchAsOneDatagram(t *testing.T) {
 	raw := &recordingRawTransport{}
 	client := NewClient(raw)
 	request := []Message{BatchBegin(10), {
 		Header: Header{Type: NFTablesType(MessageGetTable), Flags: FlagRequest | FlagDump, Seq: 11},
 		Family: FamilyUnspecified,
 	}, BatchEnd(12)}
-	original, err := Encode(request[0])
-	if err != nil {
-		t.Fatal(err)
-	}
 	response, err := client.Exchange(context.Background(), request)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if raw.calls != 1 || len(raw.request) != 3 || len(response) != 3 {
-		t.Fatalf("calls=%d request=%d response=%d", raw.calls, len(raw.request), len(response))
+	if raw.calls != 1 || len(response) != 3 {
+		t.Fatalf("calls=%d response=%d", raw.calls, len(response))
 	}
-	if response[1].Header.Type != NFTablesType(MessageGetTable) {
-		t.Fatalf("response=%+v", response)
+	messages, err := DecodeMany(raw.request)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if !bytes.Equal(raw.request[0], original) {
-		t.Fatal("transport observed mutated request bytes")
+	if len(messages) != 3 || messages[0].Header.Type != TypeBatchBegin || messages[2].Header.Type != TypeBatchEnd {
+		t.Fatalf("messages=%+v", messages)
 	}
 }
 
 func TestClientFailsClosedOnTransportOrDecodeError(t *testing.T) {
-	client := NewClient(rawTransportFunc(func(context.Context, [][]byte) ([][]byte, error) {
+	client := NewClient(rawTransportFunc(func(context.Context, []byte) ([]byte, error) {
 		return nil, errors.New("netlink unavailable")
 	}))
 	if _, err := client.Exchange(context.Background(), []Message{BatchBegin(1)}); err == nil {
 		t.Fatal("transport error was ignored")
 	}
-	client = NewClient(rawTransportFunc(func(context.Context, [][]byte) ([][]byte, error) {
-		return [][]byte{{0x01}}, nil
+	client = NewClient(rawTransportFunc(func(context.Context, []byte) ([]byte, error) {
+		return []byte{0x01}, nil
 	}))
 	if _, err := client.Exchange(context.Background(), []Message{BatchBegin(1)}); err == nil {
 		t.Fatal("decode error was ignored")
@@ -169,17 +166,17 @@ func TestClientFailsClosedOnTransportOrDecodeError(t *testing.T) {
 
 type recordingRawTransport struct {
 	calls   int
-	request [][]byte
+	request []byte
 }
 
-func (r *recordingRawTransport) Exchange(_ context.Context, request [][]byte) ([][]byte, error) {
+func (r *recordingRawTransport) Exchange(_ context.Context, request []byte) ([]byte, error) {
 	r.calls++
-	r.request = cloneFrames(request)
-	return cloneFrames(request), nil
+	r.request = append([]byte(nil), request...)
+	return append([]byte(nil), request...), nil
 }
 
-type rawTransportFunc func(context.Context, [][]byte) ([][]byte, error)
+type rawTransportFunc func(context.Context, []byte) ([]byte, error)
 
-func (f rawTransportFunc) Exchange(ctx context.Context, request [][]byte) ([][]byte, error) {
+func (f rawTransportFunc) Exchange(ctx context.Context, request []byte) ([]byte, error) {
 	return f(ctx, request)
 }

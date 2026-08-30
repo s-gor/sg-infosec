@@ -87,11 +87,11 @@ func NFTablesType(operation MessageOperation) uint16 {
 }
 
 func BatchBegin(sequence uint32) Message {
-	return Message{Header: Header{Type: TypeBatchBegin, Flags: FlagRequest, Seq: sequence}}
+	return Message{Header: Header{Type: TypeBatchBegin, Flags: FlagRequest, Seq: sequence}, ResourceID: SubsystemNFTables}
 }
 
 func BatchEnd(sequence uint32) Message {
-	return Message{Header: Header{Type: TypeBatchEnd, Flags: FlagRequest, Seq: sequence}}
+	return Message{Header: Header{Type: TypeBatchEnd, Flags: FlagRequest, Seq: sequence}, ResourceID: SubsystemNFTables}
 }
 
 func Encode(message Message) ([]byte, error) {

@@ -195,6 +195,12 @@ func (c *Client) ListAudit(ctx context.Context, options ListOptions) (protocol.A
 	return response, err
 }
 
+func (c *Client) ReconcileNFT(ctx context.Context) (protocol.ActionResponse, error) {
+	var response protocol.ActionResponse
+	err := c.do(ctx, http.MethodPost, "/v1/nft/reconcile", nil, &response)
+	return response, err
+}
+
 func (c *Client) do(ctx context.Context, method, requestPath string, input, output any) error {
 	if c == nil || c.httpClient == nil || strings.TrimSpace(c.socketPath) == "" {
 		return fmt.Errorf("%w: control socket path is required", ErrUnavailable)

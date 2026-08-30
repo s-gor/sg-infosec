@@ -1,0 +1,42 @@
+name: SG InfoSec enforcer gate
+
+on:
+  push:
+    branches:
+      - feature/enforcer-complete
+      - codex/enforcer-corrective-validation
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Check out exact commit
+        uses: actions/checkout@v6
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Install Linux test dependencies
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libsqlite3-dev pkg-config iproute2
+
+      - name: Run format, vet, unit, race, and build gate
+        run: make check
+
+      - name: Run resource smoke
+        run: bash scripts/smoke-resource.sh
+
+      - name: Run real kernel nftables smoke
+        run: |
+          sudo env \
+            "PATH=$PATH" \
+            "GOCACHE=$RUNNER_TEMP/root-gocache" \
+            "GOMODCACHE=$RUNNER_TEMP/root-gomodcache" \
+            bash scripts/smoke-kernel-netns.sh

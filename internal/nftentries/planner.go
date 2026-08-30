@@ -83,8 +83,8 @@ func EncodeKey(key enforcer.Key) (ElementKey, error) {
 			value := address.As16()
 			setName, encoded = "panel_v6", append([]byte(nil), value[:]...)
 		}
-		port := make([]byte, 2)
-		binary.BigEndian.PutUint16(port, key.Port)
+		port := make([]byte, 4)
+		binary.BigEndian.PutUint16(port[:2], key.Port)
 		encoded = append(encoded, port...)
 	default:
 		return ElementKey{}, ErrInvalidElement
@@ -130,10 +130,12 @@ func decodeKey(element ElementKey) (enforcer.Key, error) {
 	switch element.SetName {
 	case "ssh_v4", "ssh_v6":
 		scope, port = model.ScopeSSH, 22
-	case "panel_v4", "panel_v6":
-		scope = model.ScopePanelPort
-		addressLength -= 2
-		port = binary.BigEndian.Uint16(element.Key[addressLength:])
+	case "panel_v4":
+		scope, addressLength = model.ScopePanelPort, 4
+		port = binary.BigEndian.Uint16(element.Key[addressLength : addressLength+2])
+	case "panel_v6":
+		scope, addressLength = model.ScopePanelPort, 16
+		port = binary.BigEndian.Uint16(element.Key[addressLength : addressLength+2])
 	default:
 		return enforcer.Key{}, ErrInvalidElement
 	}
@@ -209,16 +211,21 @@ func validateElement(element Element) error {
 }
 
 func validateKey(element ElementKey) error {
-	lengths := map[string]int{"ssh_v4": 4, "ssh_v6": 16, "panel_v4": 6, "panel_v6": 18}
+	lengths := map[string]int{"ssh_v4": 4, "ssh_v6": 16, "panel_v4": 8, "panel_v6": 20}
 	length, ok := lengths[element.SetName]
 	if !ok || len(element.Key) != length {
 		return ErrInvalidElement
 	}
 	addressLength := length
-	if element.SetName == "panel_v4" || element.SetName == "panel_v6" {
-		addressLength -= 2
-		port := binary.BigEndian.Uint16(element.Key[addressLength:])
-		if port == 0 || reservedVPNPort(port) {
+	switch element.SetName {
+	case "panel_v4":
+		addressLength = 4
+	case "panel_v6":
+		addressLength = 16
+	}
+	if addressLength != length {
+		port := binary.BigEndian.Uint16(element.Key[addressLength : addressLength+2])
+		if port == 0 || reservedVPNPort(port) || element.Key[addressLength+2] != 0 || element.Key[addressLength+3] != 0 {
 			return ErrInvalidElement
 		}
 	}

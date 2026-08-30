@@ -89,9 +89,9 @@ func testConfig(t *testing.T) config.Config {
 	dir := t.TempDir()
 	uid := uint32(os.Getuid())
 	return config.Config{
-		DatabasePath:  filepath.Join(dir, "state.db"),
-		EventsSocket:  filepath.Join(dir, "events.sock"),
-		ControlSocket: filepath.Join(dir, "control.sock"),
+		DatabasePath:   filepath.Join(dir, "state.db"),
+		EventsSocket:   filepath.Join(dir, "events.sock"),
+		ControlSocket:  filepath.Join(dir, "control.sock"),
 		EventBodyLimit: 16 * 1024,
 		Retention:      config.EventRetention{Events: 24 * time.Hour, Audit: 30 * 24 * time.Hour},
 		Sources: []config.Source{{

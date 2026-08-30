@@ -23,8 +23,8 @@ func TestEncodeMapsEntriesToFixedTimeoutSets(t *testing.T) {
 	}{
 		{entry: entry(model.ScopeSSH, "203.0.113.7", 22, now.Add(30*time.Minute)), setName: "ssh_v4", keyHex: "cb007107"},
 		{entry: entry(model.ScopeSSH, "2001:db8::7", 22, now.Add(30*time.Minute)), setName: "ssh_v6", keyHex: "20010db8000000000000000000000007"},
-		{entry: entry(model.ScopePanelPort, "203.0.113.7", 63443, now.Add(time.Hour)), setName: "panel_v4", keyHex: "cb007107f7d3"},
-		{entry: entry(model.ScopePanelPort, "2001:db8::7", 63443, now.Add(time.Hour)), setName: "panel_v6", keyHex: "20010db8000000000000000000000007f7d3"},
+		{entry: entry(model.ScopePanelPort, "203.0.113.7", 63443, now.Add(time.Hour)), setName: "panel_v4", keyHex: "cb007107f7d30000"},
+		{entry: entry(model.ScopePanelPort, "2001:db8::7", 63443, now.Add(time.Hour)), setName: "panel_v6", keyHex: "20010db8000000000000000000000007f7d30000"},
 	}
 	for _, item := range cases {
 		element, err := Encode(now, item.entry)
@@ -139,13 +139,21 @@ func ids(elements []Element) []string {
 
 func TestDecodeRestoresTypedEntry(t *testing.T) {
 	now := time.Date(2026, 8, 29, 19, 0, 0, 0, time.UTC)
-	input := Element{SetName: "panel_v6", Key: append(netip.MustParseAddr("2001:db8::7").AsSlice(), 0xf7, 0xd3), Timeout: time.Hour}
+	input := Element{SetName: "panel_v6", Key: append(netip.MustParseAddr("2001:db8::7").AsSlice(), 0xf7, 0xd3, 0, 0), Timeout: time.Hour}
 	entry, err := Decode(now, input)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if entry.Scope != model.ScopePanelPort || entry.Port != 63443 || entry.IP.String() != "2001:db8::7" || !entry.ExpiresAt.Equal(now.Add(time.Hour)) {
 		t.Fatalf("entry=%+v", entry)
+	}
+}
+
+func TestDecodeRejectsNonZeroConcatPadding(t *testing.T) {
+	now := time.Date(2026, 8, 29, 19, 0, 0, 0, time.UTC)
+	input := Element{SetName: "panel_v4", Key: []byte{203, 0, 113, 7, 0xf7, 0xd3, 0, 1}, Timeout: time.Hour}
+	if _, err := Decode(now, input); !errors.Is(err, ErrInvalidElement) {
+		t.Fatalf("err=%v", err)
 	}
 }
 

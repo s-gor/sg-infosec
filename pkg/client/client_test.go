@@ -108,3 +108,30 @@ func TestClientRejectsPathLikeResourceIDsBeforeDialing(t *testing.T) {
 		t.Fatalf("remove error = %v, want local validation error", err)
 	}
 }
+
+func TestClientReconcileNFTUsesCoreControlRoute(t *testing.T) {
+	socketPath := filepath.Join(t.TempDir(), "control.sock")
+	listener, err := net.Listen("unix", socketPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	server := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/v1/nft/reconcile" {
+			http.Error(w, "wrong route", http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"changed":true,"request_id":"server-request"}`))
+	})}
+	go server.Serve(listener)
+	defer server.Close()
+
+	response, err := New(socketPath).ReconcileNFT(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !response.Changed || response.RequestID != "server-request" {
+		t.Fatalf("response=%+v", response)
+	}
+}

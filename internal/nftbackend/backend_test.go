@@ -67,7 +67,7 @@ func TestListDecodesKernelElementsToAbsoluteEntries(t *testing.T) {
 	now := time.Date(2026, 8, 29, 19, 0, 0, 0, time.UTC)
 	driver := &fakeDriver{
 		snapshot: nftschema.CompleteSnapshot(),
-		elements: []nftentries.Element{{SetName: "panel_v4", Key: []byte{203, 0, 113, 7, 0xf7, 0xd3}, Timeout: time.Hour}},
+		elements: []nftentries.Element{{SetName: "panel_v4", Key: []byte{203, 0, 113, 7, 0xf7, 0xd3, 0, 0}, Timeout: time.Hour}},
 	}
 	backend := New(driver, &clock.Fake{Current: now})
 	entries, err := backend.List(context.Background())

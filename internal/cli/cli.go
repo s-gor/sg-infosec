@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/s-gor/sg-infosec/pkg/client"
+	"github.com/s-gor/sg-infosec/pkg/enforcerprotocol"
 	"github.com/s-gor/sg-infosec/pkg/protocol"
 )
 
@@ -21,7 +22,10 @@ const (
 	ExitUnavailable = 4
 )
 
-const defaultControlSocket = "/run/sg-infosec/control.sock"
+const (
+	defaultControlSocket  = "/run/sg-infosec/control.sock"
+	defaultEnforcerSocket = "/run/sg-infosec/enforcer.sock"
+)
 
 type Service interface {
 	Health(context.Context) (client.HealthResponse, error)
@@ -33,11 +37,18 @@ type Service interface {
 	AddAllowlist(context.Context, protocol.AllowlistCreateRequest) (protocol.AllowlistView, error)
 	RemoveAllowlist(context.Context, string) (protocol.ActionResponse, error)
 	ListAudit(context.Context, client.ListOptions) (protocol.AuditListResponse, error)
+	ReconcileNFT(context.Context) (protocol.ActionResponse, error)
+}
+
+type EnforcerService interface {
+	Ensure(context.Context, string) error
+	List(context.Context) (enforcerprotocol.ListResponse, error)
 }
 
 type Dependencies struct {
-	NewClient      func(socketPath string) Service
-	ValidateConfig func(path string) error
+	NewClient         func(socketPath string) Service
+	NewEnforcerClient func(socketPath string) EnforcerService
+	ValidateConfig    func(path string) error
 }
 
 type runner struct {
@@ -59,6 +70,7 @@ func Run(args []string, stdout, stderr io.Writer, dependencies Dependencies) int
 	global.SetOutput(io.Discard)
 	jsonOutput := global.Bool("json", false, "emit JSON")
 	socket := global.String("socket", defaultControlSocket, "control Unix socket")
+	enforcerSocket := global.String("enforcer-socket", defaultEnforcerSocket, "enforcer Unix socket")
 	if err := global.Parse(args); err != nil {
 		fmt.Fprintf(stderr, "usage error: %v\n", err)
 		return ExitUsage
@@ -71,6 +83,33 @@ func Run(args []string, stdout, stderr io.Writer, dependencies Dependencies) int
 	current := &runner{stdout: stdout, stderr: stderr, json: *jsonOutput, deps: dependencies, socket: *socket}
 	if remaining[0] == "config" {
 		return current.runConfig(remaining[1:])
+	}
+	if remaining[0] == "nft" {
+		if len(remaining) != 2 {
+			return current.usage("nft requires one of: status, list, reconcile")
+		}
+		if remaining[1] == "reconcile" {
+			if dependencies.NewClient == nil {
+				fmt.Fprintln(stderr, "runtime error: client factory is not configured")
+				return ExitFailure
+			}
+			service := dependencies.NewClient(*socket)
+			if service == nil {
+				fmt.Fprintln(stderr, "runtime error: client factory returned nil")
+				return ExitFailure
+			}
+			return current.runNFTReconcile(context.Background(), service)
+		}
+		if dependencies.NewEnforcerClient == nil {
+			fmt.Fprintln(stderr, "runtime error: enforcer client factory is not configured")
+			return ExitFailure
+		}
+		service := dependencies.NewEnforcerClient(*enforcerSocket)
+		if service == nil {
+			fmt.Fprintln(stderr, "runtime error: enforcer client factory returned nil")
+			return ExitFailure
+		}
+		return current.runNFTEnforcer(context.Background(), service, remaining[1])
 	}
 	if dependencies.NewClient == nil {
 		fmt.Fprintln(stderr, "runtime error: client factory is not configured")
@@ -104,6 +143,54 @@ func (r *runner) runService(ctx context.Context, service Service, args []string)
 	default:
 		return r.usage("unknown command " + args[0])
 	}
+}
+
+func (r *runner) runNFTEnforcer(ctx context.Context, service EnforcerService, command string) int {
+	switch command {
+	case "status":
+		if err := service.Ensure(ctx, requestID("ctl-status")); err != nil {
+			return r.failure(err)
+		}
+		if r.json {
+			return r.printJSON(enforcerprotocol.ActionResponse{OK: true})
+		}
+		fmt.Fprintln(r.stdout, "nftables enforcer: ready")
+		return ExitSuccess
+	case "list":
+		response, err := service.List(ctx)
+		if err != nil {
+			return r.failure(err)
+		}
+		if r.json {
+			return r.printJSON(response)
+		}
+		if len(response.Entries) == 0 {
+			fmt.Fprintln(r.stdout, "no nftables entries")
+		} else {
+			for _, entry := range response.Entries {
+				fmt.Fprintf(r.stdout, "%s %s/%d %s until %s\n", entry.Scope, entry.Protocol, entry.Port, entry.IP, entry.ExpiresAt.UTC().Format(time.RFC3339))
+			}
+		}
+		return ExitSuccess
+	default:
+		return r.usage("unknown nft subcommand " + command)
+	}
+}
+
+func (r *runner) runNFTReconcile(ctx context.Context, service Service) int {
+	response, err := service.ReconcileNFT(ctx)
+	if err != nil {
+		return r.failure(err)
+	}
+	if r.json {
+		return r.printJSON(response)
+	}
+	fmt.Fprintln(r.stdout, "nftables reconciled from SQLite")
+	return ExitSuccess
+}
+
+func requestID(prefix string) string {
+	return fmt.Sprintf("%s-%d", prefix, time.Now().UTC().UnixNano())
 }
 
 func (r *runner) runDecisions(ctx context.Context, service Service, args []string) int {
@@ -370,5 +457,5 @@ func validResourceID(value string) bool {
 }
 
 func printUsage(writer io.Writer) {
-	fmt.Fprintln(writer, "usage: sg-infosecctl [--json] [--socket PATH] <health|status|decisions|allowlist|audit|config> ...")
+	fmt.Fprintln(writer, "usage: sg-infosecctl [--json] [--socket PATH] [--enforcer-socket PATH] <health|status|decisions|allowlist|audit|nft|config> ...")
 }
