@@ -50,8 +50,7 @@ func TestSystemdServiceIsUnixOnlyAndUnprivileged(t *testing.T) {
 	requireContains(t, service,
 		"User=sg-infosec",
 		"Group=sg-infosec",
-		"RuntimeDirectory=sg-infosec",
-		"RuntimeDirectoryMode=0750",
+		"After=local-fs.target systemd-tmpfiles-setup.service sg-infosec-enforcer.service",
 		"StateDirectory=sg-infosec",
 		"StateDirectoryMode=0750",
 		"ExecStartPre=/usr/local/sbin/sg-infosecd --config /etc/sg-infosec/sg-infosec.yaml --check-config",
@@ -63,7 +62,7 @@ func TestSystemdServiceIsUnixOnlyAndUnprivileged(t *testing.T) {
 		"CapabilityBoundingSet=",
 		"AmbientCapabilities=",
 	)
-	requireNotContains(t, service, "User=root", "CAP_NET_ADMIN", "AF_INET", "AF_INET6")
+	requireNotContains(t, service, "User=root", "CAP_NET_ADMIN", "AF_INET", "AF_INET6", "RuntimeDirectory=sg-infosec")
 }
 
 func TestTmpfilesCreatesNarrowRuntimeAndPersistentDirectories(t *testing.T) {
@@ -87,8 +86,9 @@ func TestInstallerPreservesConfigAndGrantsGatewaySocketAccess(t *testing.T) {
 		"usermod -a -G \"$SERVICE_GROUP\" sg-gateway",
 		"systemd-tmpfiles --create \"$TMPFILES_PATH\"",
 		"systemctl enable --now sg-infosec-enforcer.service sg-infosec.service",
+		"group membership takes effect after the next planned sg-gateway.service restart",
 	)
-	requireNotContains(t, installer, "curl ", "wget ", "sed -i", "iptables", "nft ")
+	requireNotContains(t, installer, "curl ", "wget ", "sed -i", "iptables", "nft ", "try-restart sg-gateway.service", "restart sg-gateway.service")
 }
 
 func TestUninstallerPreservesStateUnlessPurgeIsExplicit(t *testing.T) {
@@ -201,6 +201,7 @@ func TestEnforcerServiceIsRootButNarrowlyCapabilityBound(t *testing.T) {
 	service := readRepositoryFile(t, "packaging/systemd/sg-infosec-enforcer.service")
 	requireContains(t, service,
 		"User=root",
+		"After=network-pre.target systemd-tmpfiles-setup.service",
 		"ExecStart=/usr/local/sbin/sg-infosec-enforcerd --service-user sg-infosec",
 		"CapabilityBoundingSet=CAP_NET_ADMIN",
 		"AmbientCapabilities=CAP_NET_ADMIN",
@@ -208,7 +209,7 @@ func TestEnforcerServiceIsRootButNarrowlyCapabilityBound(t *testing.T) {
 		"NoNewPrivileges=true",
 		"ProtectSystem=strict",
 	)
-	requireNotContains(t, service, "AF_INET", "AF_INET6", "CAP_SYS_ADMIN")
+	requireNotContains(t, service, "AF_INET", "AF_INET6", "CAP_SYS_ADMIN", "RuntimeDirectory=sg-infosec")
 	core := readRepositoryFile(t, "packaging/systemd/sg-infosec.service")
 	requireContains(t, core, "Requires=sg-infosec-enforcer.service")
 }

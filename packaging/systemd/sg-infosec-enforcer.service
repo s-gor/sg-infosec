@@ -1,6 +1,6 @@
 [Unit]
 Description=SG InfoSec nftables enforcer
-After=network-pre.target
+After=network-pre.target systemd-tmpfiles-setup.service
 Before=sg-infosec.service
 
 [Service]
@@ -10,8 +10,6 @@ Group=root
 ExecStart=/usr/local/sbin/sg-infosec-enforcerd --service-user sg-infosec
 Restart=on-failure
 RestartSec=2s
-RuntimeDirectory=sg-infosec
-RuntimeDirectoryMode=0750
 UMask=0077
 NoNewPrivileges=true
 CapabilityBoundingSet=CAP_NET_ADMIN

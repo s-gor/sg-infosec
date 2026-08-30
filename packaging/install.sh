@@ -82,12 +82,11 @@ if [[ -z "$DESTDIR" ]]; then
     systemctl daemon-reload
     if [[ "$NO_START" != "1" ]]; then
         systemctl enable --now sg-infosec-enforcer.service sg-infosec.service
-        if (( GATEWAY_MEMBERSHIP_CHANGED )) && systemctl is-active --quiet sg-gateway.service; then
-            if ! systemctl try-restart sg-gateway.service; then
-                printf 'warning: restart sg-gateway.service to activate SG InfoSec socket access\n' >&2
-            fi
-        fi
     fi
+fi
+
+if (( GATEWAY_MEMBERSHIP_CHANGED )); then
+    printf 'note: SG Gateway group membership takes effect after the next planned sg-gateway.service restart; the installer did not restart it.\n' >&2
 fi
 
 printf 'SG InfoSec installed. Existing configuration and state were preserved.\n'

@@ -1,6 +1,6 @@
 [Unit]
 Description=SG InfoSec local security service
-After=local-fs.target sg-infosec-enforcer.service
+After=local-fs.target systemd-tmpfiles-setup.service sg-infosec-enforcer.service
 Requires=sg-infosec-enforcer.service
 Before=sg-gateway.service
 
@@ -10,8 +10,6 @@ User=sg-infosec
 Group=sg-infosec
 ExecStartPre=/usr/local/sbin/sg-infosecd --config /etc/sg-infosec/sg-infosec.yaml --check-config
 ExecStart=/usr/local/sbin/sg-infosecd --config /etc/sg-infosec/sg-infosec.yaml
-RuntimeDirectory=sg-infosec
-RuntimeDirectoryMode=0750
 StateDirectory=sg-infosec
 StateDirectoryMode=0750
 UMask=0007
