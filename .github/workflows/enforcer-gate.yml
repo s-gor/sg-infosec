@@ -40,3 +40,9 @@ jobs:
             "GOCACHE=$RUNNER_TEMP/root-gocache" \
             "GOMODCACHE=$RUNNER_TEMP/root-gomodcache" \
             bash scripts/smoke-kernel-netns.sh
+
+      - name: Run real systemd installation smoke
+        run: |
+          sudo env \
+            "PATH=$PATH" \
+            bash scripts/smoke-systemd-install.sh

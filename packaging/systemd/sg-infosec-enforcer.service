@@ -6,7 +6,7 @@ Before=sg-infosec.service
 [Service]
 Type=simple
 User=root
-Group=root
+Group=sg-infosec
 ExecStart=/usr/local/sbin/sg-infosec-enforcerd --service-user sg-infosec
 Restart=on-failure
 RestartSec=2s
@@ -28,6 +28,7 @@ RestrictSUIDSGID=true
 LockPersonality=true
 MemoryDenyWriteExecute=true
 SystemCallArchitectures=native
+ReadWritePaths=/run/sg-infosec
 
 [Install]
 WantedBy=multi-user.target

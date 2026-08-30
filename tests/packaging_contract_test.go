@@ -68,12 +68,14 @@ func TestSystemdServiceIsUnixOnlyAndUnprivileged(t *testing.T) {
 func TestTmpfilesCreatesNarrowRuntimeAndPersistentDirectories(t *testing.T) {
 	tmpfiles := readRepositoryFile(t, "packaging/tmpfiles.d/sg-infosec.conf")
 	requireContains(t, tmpfiles,
-		"d /run/sg-infosec 0750 sg-infosec sg-infosec -",
+		"d /run/sg-infosec 0750 root sg-infosec -",
+		"a+ /run/sg-infosec - - - - u:sg-infosec:rwx,g::rx,m::rwx",
 		"d /var/lib/sg-infosec 0750 sg-infosec sg-infosec -",
 		"d /etc/sg-infosec 0750 root sg-infosec -",
 		"d /etc/sg-infosec/sources.d 0750 root sg-infosec -",
 		"d /etc/sg-infosec/policies.d 0750 root sg-infosec -",
 	)
+	requireNotContains(t, tmpfiles, "d /run/sg-infosec 0750 sg-infosec sg-infosec -")
 }
 
 func TestInstallerPreservesConfigAndGrantsGatewaySocketAccess(t *testing.T) {
@@ -201,6 +203,7 @@ func TestEnforcerServiceIsRootButNarrowlyCapabilityBound(t *testing.T) {
 	service := readRepositoryFile(t, "packaging/systemd/sg-infosec-enforcer.service")
 	requireContains(t, service,
 		"User=root",
+		"Group=sg-infosec",
 		"After=network-pre.target systemd-tmpfiles-setup.service",
 		"ExecStart=/usr/local/sbin/sg-infosec-enforcerd --service-user sg-infosec",
 		"CapabilityBoundingSet=CAP_NET_ADMIN",
@@ -208,8 +211,9 @@ func TestEnforcerServiceIsRootButNarrowlyCapabilityBound(t *testing.T) {
 		"RestrictAddressFamilies=AF_UNIX AF_NETLINK",
 		"NoNewPrivileges=true",
 		"ProtectSystem=strict",
+		"ReadWritePaths=/run/sg-infosec",
 	)
-	requireNotContains(t, service, "AF_INET", "AF_INET6", "CAP_SYS_ADMIN", "RuntimeDirectory=sg-infosec")
+	requireNotContains(t, service, "Group=root", "AF_INET", "AF_INET6", "CAP_SYS_ADMIN", "CAP_DAC_OVERRIDE", "RuntimeDirectory=sg-infosec")
 	core := readRepositoryFile(t, "packaging/systemd/sg-infosec.service")
 	requireContains(t, core, "Requires=sg-infosec-enforcer.service")
 }
