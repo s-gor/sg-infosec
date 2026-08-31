@@ -3,6 +3,7 @@ set -Eeuo pipefail
 
 REPOSITORY_URL="${SG_INFOSEC_REPOSITORY_URL:-https://github.com/s-gor/sg-infosec.git}"
 SOURCE_SHA="${SG_INFOSEC_SOURCE_SHA:-}"
+FORCE_GO_INSTALL="${SG_INFOSEC_FORCE_GO_INSTALL:-0}"
 GO_VERSION="1.24.12"
 GO_MIN_MAJOR=1
 GO_MIN_MINOR=23
@@ -52,6 +53,10 @@ fi
 if [[ ! "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]; then
     fail "SG InfoSec source commit must be a full 40-character SHA"
 fi
+case "$FORCE_GO_INSTALL" in
+    0|1) ;;
+    *) fail "SG_INFOSEC_FORCE_GO_INSTALL must be 0 or 1" ;;
+esac
 if (( EUID != 0 )); then
     fail "run as root"
 fi
@@ -136,7 +141,10 @@ install_go() {
 }
 
 TEMP_DIR="$(mktemp -d)"
-if ! GO_BINARY="$(find_supported_go)"; then
+if [[ "$FORCE_GO_INSTALL" == "1" ]]; then
+    install_go
+    GO_BINARY="/usr/local/go/bin/go"
+elif ! GO_BINARY="$(find_supported_go)"; then
     install_go
     GO_BINARY="/usr/local/go/bin/go"
 fi
