@@ -8,6 +8,7 @@ import (
 
 	"github.com/s-gor/sg-infosec/internal/buildinfo"
 	"github.com/s-gor/sg-infosec/internal/cli"
+	consolepkg "github.com/s-gor/sg-infosec/internal/console"
 	"github.com/s-gor/sg-infosec/internal/config"
 	"github.com/s-gor/sg-infosec/pkg/client"
 	"github.com/s-gor/sg-infosec/pkg/enforcerclient"
@@ -25,7 +26,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		}
 		return cli.ExitSuccess
 	}
-	return cli.Run(args, stdout, stderr, cli.Dependencies{
+	base := cli.Dependencies{
 		NewClient: func(socketPath string) cli.Service {
 			return client.New(socketPath)
 		},
@@ -36,5 +37,11 @@ func run(args []string, stdout, stderr io.Writer) int {
 			_, err := config.Load(path)
 			return err
 		},
+	}
+	return cli.RunLocal(args, os.Stdin, stdout, stderr, cli.LocalDependencies{
+		Dependencies: base,
+		Stdin:        os.Stdin,
+		Probe:        consolepkg.OSProbe{},
+		Paths:        consolepkg.DefaultPaths(),
 	})
 }
