@@ -40,10 +40,17 @@ func TestREADMEUsesThePinnedCleanInstallEntrypoint(t *testing.T) {
 	requireContains(t, readme,
 		"## Install on a clean Debian or Ubuntu host",
 		`SHA="<published-full-commit-sha>"`,
+		`INSTALLER="$(mktemp)"`,
+		`trap 'rm -f "$INSTALLER"' EXIT`,
 		`https://raw.githubusercontent.com/s-gor/sg-infosec/${SHA}/install-from-github.sh`,
-		`sudo bash -s -- "$SHA"`,
+		`--output "$INSTALLER"`,
+		`sudo bash "$INSTALLER" "$SHA"`,
 		"The SHA appears twice intentionally",
 		"does not restart SG-Gateway",
+	)
+	requireNotContains(t, readme,
+		`install-from-github.sh" |`,
+		`sudo bash -s -- "$SHA"`,
 	)
 }
 
