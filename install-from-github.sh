@@ -25,9 +25,11 @@ usage() {
 
 diagnostics() {
     systemctl --no-pager --full status \
+        sg-infosec-ssh-agent.service \
         sg-infosec-enforcer.service \
         sg-infosec.service >&2 2>/dev/null || true
     journalctl \
+        -u sg-infosec-ssh-agent.service \
         -u sg-infosec-enforcer.service \
         -u sg-infosec.service \
         --no-pager -n 120 >&2 2>/dev/null || true
@@ -126,6 +128,7 @@ run_step() {
 check_system() {
     [[ -d /run/systemd/system ]] || fail "systemd is not running"
     command -v apt-get >/dev/null 2>&1 || fail "only Debian/Ubuntu apt-based hosts are supported"
+    command -v journalctl >/dev/null 2>&1 || fail "systemd journal tools are missing"
     [[ -r /etc/os-release ]] || fail "/etc/os-release is missing"
 
     # shellcheck disable=SC1091
@@ -233,6 +236,7 @@ build_components() {
     [[ -x bin/sg-infosecd ]] || fail "sg-infosecd was not built"
     [[ -x bin/sg-infosecctl ]] || fail "sg-infosecctl was not built"
     [[ -x bin/sg-infosec-enforcerd ]] || fail "sg-infosec-enforcerd was not built"
+    [[ -x bin/sg-infosec-ssh-agent ]] || fail "sg-infosec-ssh-agent was not built"
 }
 
 validate_existing_config() {
@@ -246,6 +250,7 @@ validate_existing_config() {
 
 install_services() {
     cd "$SOURCE_DIR"
+    systemctl stop sg-infosec-ssh-agent.service 2>/dev/null || true
     systemctl stop sg-infosec.service sg-infosec-enforcer.service 2>/dev/null || true
     SG_INFOSEC_NO_START=1 ./packaging/install.sh
     systemctl daemon-reload
@@ -255,8 +260,8 @@ install_services() {
         /run/sg-infosec/events.sock \
         /run/sg-infosec/enforcer.sock \
         /run/sg-infosec/enforcer-debug.sock
-    systemctl reset-failed sg-infosec-enforcer.service sg-infosec.service 2>/dev/null || true
-    systemctl enable sg-infosec-enforcer.service sg-infosec.service
+    systemctl reset-failed sg-infosec-ssh-agent.service sg-infosec-enforcer.service sg-infosec.service 2>/dev/null || true
+    systemctl enable sg-infosec-enforcer.service sg-infosec.service sg-infosec-ssh-agent.service
 }
 
 wait_for_service_socket() {
@@ -278,12 +283,16 @@ start_services() {
     systemctl start sg-infosec.service
     wait_for_service_socket sg-infosec.service /run/sg-infosec/control.sock
     [[ -S /run/sg-infosec/events.sock ]] || fail "events socket was not created"
+
+    systemctl start sg-infosec-ssh-agent.service
+    systemctl is-active --quiet sg-infosec-ssh-agent.service || fail "SSH journal collector did not become active"
 }
 
 verify_installation() {
     {
         /usr/local/sbin/sg-infosecctl health
         /usr/local/sbin/sg-infosecctl nft status
+        systemctl is-active --quiet sg-infosec-ssh-agent.service
     } | tee "$STATUS_OUTPUT"
 }
 
@@ -346,5 +355,6 @@ else
     printf 'SG InfoSec successfully installed\n'
 fi
 cat "$STATUS_OUTPUT"
+printf 'SSH journal collector: active\n'
 printf 'Commit: %s\n' "$SOURCE_SHA"
 printf 'Existing configuration and state were preserved. SG-Gateway was not restarted.\n'
