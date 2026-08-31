@@ -2,6 +2,7 @@ package sshjournal
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
@@ -24,12 +25,10 @@ func (f *fakeSubmitter) SubmitEvent(_ context.Context, event protocol.EventReque
 }
 
 func TestRunStreamContinuesAfterMalformedRecordsAndDeliveryFailure(t *testing.T) {
-	input := strings.Join([]string{
-		`not-json`,
-		`{"MESSAGE":"Failed password for root from 192.0.2.10 port 22 ssh2","__CURSOR":"one","_SOURCE_REALTIME_TIMESTAMP":"1788182400000000","_SYSTEMD_UNIT":"ssh.service"}`,
-		`{"MESSAGE":"Accepted password for root from 192.0.2.11 port 22 ssh2","__CURSOR":"ignored","_SOURCE_REALTIME_TIMESTAMP":"1788182400000000","_SYSTEMD_UNIT":"ssh.service"}`,
-		`{"MESSAGE":"Failed publickey for admin from 2001:db8::5 port 22 ssh2","__CURSOR":"two","_SOURCE_REALTIME_TIMESTAMP":"1788182401000000","_SYSTEMD_UNIT":"sshd.service"}`,
-	}, "\n")
+	first, _ := json.Marshal(map[string]string{"MESSAGE": "Failed password for root from 192.0.2.10 port 22 ssh2", "__CURSOR": "one", "_SOURCE_REALTIME_TIMESTAMP": "1788182400000000", "_SYSTEMD_UNIT": "ssh.service"})
+	ignored, _ := json.Marshal(map[string]string{"MESSAGE": "Accepted password for root from 192.0.2.11 port 22 ssh2", "__CURSOR": "ignored", "_SOURCE_REALTIME_TIMESTAMP": "1788182400000000", "_SYSTEMD_UNIT": "ssh.service"})
+	second, _ := json.Marshal(map[string]string{"MESSAGE": "Failed publickey for admin from 2001:db8::5 port 22 ssh2", "__CURSOR": "two", "_SOURCE_REALTIME_TIMESTAMP": "1788182401000000", "_SYSTEMD_UNIT": "sshd.service"})
+	input := strings.Join([]string{"not-json", string(first), string(ignored), string(second)}, "\n")
 
 	submitter := &fakeSubmitter{fail: 1}
 	if err := RunStream(context.Background(), strings.NewReader(input), submitter); err != nil {
@@ -53,7 +52,8 @@ func TestJournalctlArgumentsFollowOnlySSHUnitsAsJSON(t *testing.T) {
 func TestRunStreamStopsOnContextCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	err := RunStream(ctx, strings.NewReader(`{"MESSAGE":"Failed password for root from 192.0.2.10 port 22 ssh2","__CURSOR":"one","_SYSTEMD_UNIT":"ssh.service"}`), &fakeSubmitter{})
+	record, _ := json.Marshal(map[string]string{"MESSAGE": "Failed password for root from 192.0.2.10 port 22 ssh2", "__CURSOR": "one", "_SYSTEMD_UNIT": "ssh.service"})
+	err := RunStream(ctx, strings.NewReader(string(record)), &fakeSubmitter{})
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("err=%v", err)
 	}
