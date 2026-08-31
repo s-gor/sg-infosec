@@ -227,6 +227,7 @@ func (r *runner) runDecisions(ctx context.Context, service Service, args []strin
 		var request protocol.ManualDecisionRequest
 		flags.StringVar(&request.SourceID, "source", "", "target source")
 		flags.StringVar(&request.Scope, "scope", "", "target scope")
+		flags.StringVar(&request.Backend, "backend", "", "decision backend")
 		flags.StringVar(&request.IP, "ip", "", "target IP")
 		flags.StringVar(&request.Duration, "duration", "", "decision duration")
 		flags.StringVar(&request.Reason, "reason", "", "reason")
