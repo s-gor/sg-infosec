@@ -1,0 +1,39 @@
+name: SG InfoSec format export
+
+on:
+  push:
+    branches:
+      - codex/enforcer-corrective-validation
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Format new Go files
+        run: |
+          gofmt -w \
+            cmd/sg-infosecctl/main.go \
+            internal/cli/console_commands_test.go \
+            internal/console/console.go \
+            internal/console/console_test.go \
+            internal/console/overview.go \
+            internal/console/overview_test.go
+      - name: Export formatted files
+        uses: actions/upload-artifact@v4
+        with:
+          name: formatted-go-files
+          path: |
+            cmd/sg-infosecctl/main.go
+            internal/cli/console_commands_test.go
+            internal/console/console.go
+            internal/console/console_test.go
+            internal/console/overview.go
+            internal/console/overview_test.go
