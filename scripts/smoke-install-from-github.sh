@@ -32,7 +32,7 @@ git clone --quiet --bare "$ROOT_DIR" "$SOURCE_REPOSITORY"
 rm -rf /usr/local/go
 
 SG_INFOSEC_REPOSITORY_URL="file://$SOURCE_REPOSITORY" \
-    "$ROOT_DIR/install-from-github.sh" "$SOURCE_SHA"
+    bash "$ROOT_DIR/install-from-github.sh" "$SOURCE_SHA"
 INSTALLED=1
 
 systemctl is-active --quiet sg-infosec-enforcer.service || fail "enforcer is not active"
@@ -46,7 +46,7 @@ systemctl is-active --quiet sg-infosec.service || fail "core is not active"
 printf '\n# preserve-clean-install-marker\n' >>/etc/sg-infosec/sg-infosec.yaml
 
 SG_INFOSEC_REPOSITORY_URL="file://$SOURCE_REPOSITORY" \
-    "$ROOT_DIR/install-from-github.sh" "$SOURCE_SHA"
+    bash "$ROOT_DIR/install-from-github.sh" "$SOURCE_SHA"
 
 grep -Fq 'preserve-clean-install-marker' /etc/sg-infosec/sg-infosec.yaml || \
     fail "repeat install overwrote configuration"
