@@ -8,8 +8,8 @@ import (
 
 	"github.com/s-gor/sg-infosec/internal/buildinfo"
 	"github.com/s-gor/sg-infosec/internal/cli"
-	consolepkg "github.com/s-gor/sg-infosec/internal/console"
 	"github.com/s-gor/sg-infosec/internal/config"
+	consolepkg "github.com/s-gor/sg-infosec/internal/console"
 	"github.com/s-gor/sg-infosec/pkg/client"
 	"github.com/s-gor/sg-infosec/pkg/enforcerclient"
 )

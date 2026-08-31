@@ -38,26 +38,28 @@ func (f *fakeCore) RevokeDecision(_ context.Context, id string) (protocol.Action
 }
 
 type fakeEnforcer struct{ ready bool }
+
 func (f *fakeEnforcer) Ready(context.Context) error { return nil }
 
 type fakeProbe map[string]bool
-func (f fakeProbe) Hostname() string { return "sg-test" }
+
+func (f fakeProbe) Hostname() string        { return "sg-test" }
 func (f fakeProbe) Exists(path string) bool { return f[path] }
 
 func TestCollectAndRenderOverviewShowsConnectionsAndCounts(t *testing.T) {
 	core := &fakeCore{
-		health: client.HealthResponse{Status: "healthy", Database: "ok", ProtocolVersion: "v1", ActiveDecisions: 2, DatabaseBytes: 98696},
+		health:    client.HealthResponse{Status: "healthy", Database: "ok", ProtocolVersion: "v1", ActiveDecisions: 2, DatabaseBytes: 98696},
 		decisions: protocol.DecisionListResponse{Items: []protocol.DecisionView{{ID: "one"}, {ID: "two"}}},
 		allowlist: protocol.AllowlistListResponse{Items: []protocol.AllowlistView{{ID: "allow-1"}}},
-		audit: protocol.AuditListResponse{Items: []protocol.AuditView{{ID: 1}, {ID: 2}, {ID: 3}}},
+		audit:     protocol.AuditListResponse{Items: []protocol.AuditView{{ID: 1}, {ID: 2}, {ID: 3}}},
 	}
 	probe := fakeProbe{
-		"/run/sg-infosec/control.sock": true,
-		"/run/sg-infosec/events.sock": true,
-		"/run/sg-infosec/enforcer.sock": true,
+		"/run/sg-infosec/control.sock":                     true,
+		"/run/sg-infosec/events.sock":                      true,
+		"/run/sg-infosec/enforcer.sock":                    true,
 		"/etc/systemd/system/sg-infosec-ssh-agent.service": true,
-		"/opt/sg-gateway": true,
-		"/opt/sg-gateway/app/security/sg_infosec.py": true,
+		"/opt/sg-gateway":                                  true,
+		"/opt/sg-gateway/app/security/sg_infosec.py":       true,
 	}
 
 	snapshot, err := Collect(context.Background(), core, &fakeEnforcer{}, probe, DefaultPaths())

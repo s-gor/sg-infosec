@@ -10,7 +10,8 @@ import (
 )
 
 type cliProbe map[string]bool
-func (p cliProbe) Hostname() string { return "cli-host" }
+
+func (p cliProbe) Hostname() string        { return "cli-host" }
 func (p cliProbe) Exists(path string) bool { return p[path] }
 
 func TestCLIOverviewAggregatesCoreAndEnforcer(t *testing.T) {
@@ -21,8 +22,8 @@ func TestCLIOverviewAggregatesCoreAndEnforcer(t *testing.T) {
 	deps := LocalDependencies{
 		Dependencies: base,
 		Probe: cliProbe{
-			"/run/sg-infosec/control.sock": true,
-			"/run/sg-infosec/events.sock": true,
+			"/run/sg-infosec/control.sock":  true,
+			"/run/sg-infosec/events.sock":   true,
 			"/run/sg-infosec/enforcer.sock": true,
 		},
 		Paths: consolepkg.DefaultPaths(),
@@ -50,9 +51,9 @@ func TestCLIConsoleUsesInjectedInput(t *testing.T) {
 	base.NewEnforcerClient = func(string) EnforcerService { return enforcer }
 	deps := LocalDependencies{
 		Dependencies: base,
-		Stdin: strings.NewReader("q\n"),
-		Probe: cliProbe{},
-		Paths: consolepkg.DefaultPaths(),
+		Stdin:        strings.NewReader("q\n"),
+		Probe:        cliProbe{},
+		Paths:        consolepkg.DefaultPaths(),
 	}
 
 	var stdout, stderr strings.Builder

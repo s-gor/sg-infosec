@@ -11,14 +11,14 @@ import (
 func TestConsoleSupportsManualBlockRevokeAndQuit(t *testing.T) {
 	core := &fakeCore{health: client.HealthResponse{Status: "healthy", Database: "ok", ProtocolVersion: "v1"}}
 	input := strings.NewReader(strings.Join([]string{
-		"2",              // manual block
-		"192.0.2.15",     // IP
-		"ssh",            // scope
-		"30m",            // duration
-		"incident test",  // reason
-		"3",              // revoke
-		"decision-1",     // id
-		"q",              // quit
+		"2",             // manual block
+		"192.0.2.15",    // IP
+		"ssh",           // scope
+		"30m",           // duration
+		"incident test", // reason
+		"3",             // revoke
+		"decision-1",    // id
+		"q",             // quit
 	}, "\n") + "\n")
 	var output strings.Builder
 

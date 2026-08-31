@@ -46,12 +46,12 @@ func (OSProbe) Exists(path string) bool {
 }
 
 type Paths struct {
-	ControlSocket   string
-	EventsSocket    string
-	EnforcerSocket  string
-	SSHUnit         string
-	GatewayRoot     string
-	GatewayAdapter  string
+	ControlSocket  string
+	EventsSocket   string
+	EnforcerSocket string
+	SSHUnit        string
+	GatewayRoot    string
+	GatewayAdapter string
 }
 
 func DefaultPaths() Paths {
@@ -164,15 +164,15 @@ func RenderOverview(writer io.Writer, snapshot Snapshot, color bool) {
 	if color {
 		green, reset = "\x1b[32m", "\x1b[0m"
 	}
-	fmt.Fprintln(writer, "┌──────────────────────────────────────────────────────────────────────┐")
+	fmt.Fprintln(writer, "┌─────────────────────────────────────────────────────────────────────┐")
 	fmt.Fprintln(writer, "│                        SG InfoSec Console                            │")
-	fmt.Fprintln(writer, "├─────────────────────────┬────────────────────────────────────────────┤")
+	fmt.Fprintln(writer, "├────────────────────────┬────────────────────────────────────────────┤")
 	row(writer, "Server", snapshot.Hostname)
 	row(writer, "Core", green+status+reset)
 	row(writer, "Database", snapshot.Database)
 	row(writer, "Protocol", snapshot.Protocol)
 	row(writer, "Database bytes", fmt.Sprintf("%d", snapshot.DatabaseBytes))
-	fmt.Fprintln(writer, "├─────────────────────────┼────────────────────────────────────────────┤")
+	fmt.Fprintln(writer, "├────────────────────────┼───────────────────────────────────────────┤")
 	row(writer, "Control API", snapshot.ControlSocket+"  "+connected(snapshot.ControlConnected))
 	row(writer, "Events API", snapshot.EventsSocket+"  "+connected(snapshot.EventsConnected))
 	row(writer, "Enforcer", snapshot.EnforcerSocket+"  "+ready)

@@ -124,11 +124,11 @@ func runManualBlock(ctx context.Context, reader *bufio.Reader, output io.Writer,
 
 	decision, err := core.AddDecision(ctx, protocol.ManualDecisionRequest{
 		SourceID: "local-admin",
-		Scope: scope,
-		Backend: backend,
-		IP: address.String(),
+		Scope:    scope,
+		Backend:  backend,
+		IP:       address.String(),
 		Duration: durationText,
-		Reason: reason,
+		Reason:   reason,
 	})
 	if err != nil {
 		fmt.Fprintf(output, "Decision error: %v\n", err)
