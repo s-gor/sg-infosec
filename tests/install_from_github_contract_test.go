@@ -35,6 +35,36 @@ func TestInstallFromGitHubRequiresPinnedCommitAndBootstrapsHost(t *testing.T) {
 	)
 }
 
+func TestInstallFromGitHubHasTTYProgressUIAndPlainFallback(t *testing.T) {
+	installer := readRepositoryFile(t, "install-from-github.sh")
+	requireContains(t, installer,
+		`VERBOSE="${SG_INFOSEC_VERBOSE:-0}"`,
+		`[[ -t 1 && "${TERM:-dumb}" != "dumb" ]]`,
+		`SPINNER_FRAMES=('/' '-' '\\' '|')`,
+		`GREEN=$'\033[32m'`,
+		`RED=$'\033[31m'`,
+		"run_step()",
+		"show_failure_log()",
+		"SG InfoSec Installer",
+		"Checking system",
+		"Installing dependencies",
+		"Preparing Go toolchain",
+		"Downloading pinned source",
+		"Building components",
+		"Installing system services",
+		"Starting SG InfoSec",
+		"Verifying installation",
+		"SG InfoSec successfully installed",
+	)
+
+	readme := readRepositoryFile(t, "README.md")
+	requireContains(t, readme,
+		"interactive terminal",
+		"SG_INFOSEC_VERBOSE=1",
+		"plain progress lines in CI",
+	)
+}
+
 func TestREADMEUsesThePinnedCleanInstallEntrypoint(t *testing.T) {
 	readme := readRepositoryFile(t, "README.md")
 	requireContains(t, readme,
