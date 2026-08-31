@@ -16,17 +16,20 @@ func (p cliProbe) Exists(path string) bool { return p[path] }
 func TestCLIOverviewAggregatesCoreAndEnforcer(t *testing.T) {
 	core := &fakeService{health: client.HealthResponse{Status: "healthy", Database: "ok", ProtocolVersion: "v1", DatabaseBytes: 42}}
 	enforcer := &fakeEnforcerService{}
-	deps := testDependencies(core)
-	deps.NewEnforcerClient = func(string) EnforcerService { return enforcer }
-	deps.Probe = cliProbe{
-		"/run/sg-infosec/control.sock": true,
-		"/run/sg-infosec/events.sock": true,
-		"/run/sg-infosec/enforcer.sock": true,
+	base := testDependencies(core)
+	base.NewEnforcerClient = func(string) EnforcerService { return enforcer }
+	deps := LocalDependencies{
+		Dependencies: base,
+		Probe: cliProbe{
+			"/run/sg-infosec/control.sock": true,
+			"/run/sg-infosec/events.sock": true,
+			"/run/sg-infosec/enforcer.sock": true,
+		},
+		Paths: consolepkg.DefaultPaths(),
 	}
-	deps.Paths = consolepkg.DefaultPaths()
 
 	var stdout, stderr strings.Builder
-	code := Run([]string{"overview"}, &stdout, &stderr, deps)
+	code := RunLocal([]string{"overview"}, strings.NewReader(""), &stdout, &stderr, deps)
 	if code != ExitSuccess {
 		t.Fatalf("code=%d stderr=%q", code, stderr.String())
 	}
@@ -43,14 +46,17 @@ func TestCLIOverviewAggregatesCoreAndEnforcer(t *testing.T) {
 func TestCLIConsoleUsesInjectedInput(t *testing.T) {
 	core := &fakeService{health: client.HealthResponse{Status: "healthy", Database: "ok", ProtocolVersion: "v1"}}
 	enforcer := &fakeEnforcerService{}
-	deps := testDependencies(core)
-	deps.NewEnforcerClient = func(string) EnforcerService { return enforcer }
-	deps.Stdin = strings.NewReader("q\n")
-	deps.Probe = cliProbe{}
-	deps.Paths = consolepkg.DefaultPaths()
+	base := testDependencies(core)
+	base.NewEnforcerClient = func(string) EnforcerService { return enforcer }
+	deps := LocalDependencies{
+		Dependencies: base,
+		Stdin: strings.NewReader("q\n"),
+		Probe: cliProbe{},
+		Paths: consolepkg.DefaultPaths(),
+	}
 
 	var stdout, stderr strings.Builder
-	code := Run([]string{"console"}, &stdout, &stderr, deps)
+	code := RunLocal([]string{"console"}, deps.Stdin, &stdout, &stderr, deps)
 	if code != ExitSuccess {
 		t.Fatalf("code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
 	}
@@ -60,9 +66,8 @@ func TestCLIConsoleUsesInjectedInput(t *testing.T) {
 }
 
 func TestCLIConsoleRejectsJSONMode(t *testing.T) {
-	deps := testDependencies(&fakeService{})
-	deps.Stdin = strings.NewReader("q\n")
-	code := Run([]string{"--json", "console"}, io.Discard, io.Discard, deps)
+	deps := LocalDependencies{Dependencies: testDependencies(&fakeService{}), Stdin: strings.NewReader("q\n")}
+	code := RunLocal([]string{"--json", "console"}, deps.Stdin, io.Discard, io.Discard, deps)
 	if code != ExitUsage {
 		t.Fatalf("code=%d want=%d", code, ExitUsage)
 	}
