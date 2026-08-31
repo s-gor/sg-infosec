@@ -5,6 +5,8 @@ ROOT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 TEMP_DIR="$(mktemp -d)"
 SOURCE_REPOSITORY="$TEMP_DIR/source.git"
 SOURCE_SHA="$(git -C "$ROOT_DIR" rev-parse HEAD)"
+FIRST_OUTPUT="$TEMP_DIR/first-install.out"
+SECOND_OUTPUT="$TEMP_DIR/second-install.out"
 INSTALLED=0
 
 fail() {
@@ -31,10 +33,24 @@ git clone --quiet --bare "$ROOT_DIR" "$SOURCE_REPOSITORY"
 "$ROOT_DIR/packaging/uninstall.sh" --purge >/dev/null 2>&1 || true
 rm -rf /usr/local/go
 
-SG_INFOSEC_REPOSITORY_URL="file://$SOURCE_REPOSITORY" \
-SG_INFOSEC_FORCE_GO_INSTALL=1 \
-    bash "$ROOT_DIR/install-from-github.sh" "$SOURCE_SHA"
+if ! SG_INFOSEC_REPOSITORY_URL="file://$SOURCE_REPOSITORY" \
+    SG_INFOSEC_FORCE_GO_INSTALL=1 \
+    TERM=dumb \
+    bash "$ROOT_DIR/install-from-github.sh" "$SOURCE_SHA" >"$FIRST_OUTPUT" 2>&1; then
+    cat "$FIRST_OUTPUT" >&2
+    fail "first bootstrap failed"
+fi
+cat "$FIRST_OUTPUT"
 INSTALLED=1
+
+grep -Fq '[OK] Checking system' "$FIRST_OUTPUT" || fail "plain system progress is missing"
+grep -Fq '[OK] Installing dependencies' "$FIRST_OUTPUT" || fail "plain dependency progress is missing"
+grep -Fq '[OK] Building components' "$FIRST_OUTPUT" || fail "plain build progress is missing"
+grep -Fq '[OK] Verifying installation' "$FIRST_OUTPUT" || fail "plain verification progress is missing"
+grep -Fq 'SG InfoSec successfully installed' "$FIRST_OUTPUT" || fail "success summary is missing"
+if LC_ALL=C grep -q $'\033\[' "$FIRST_OUTPUT"; then
+    fail "non-interactive output contains terminal escape sequences"
+fi
 
 [[ "$(/usr/local/go/bin/go env GOVERSION)" == "go1.24.12" ]] || \
     fail "bootstrap did not install the pinned Go toolchain"
@@ -48,9 +64,16 @@ systemctl is-active --quiet sg-infosec.service || fail "core is not active"
 
 printf '\n# preserve-clean-install-marker\n' >>/etc/sg-infosec/sg-infosec.yaml
 
-SG_INFOSEC_REPOSITORY_URL="file://$SOURCE_REPOSITORY" \
-    bash "$ROOT_DIR/install-from-github.sh" "$SOURCE_SHA"
+if ! SG_INFOSEC_REPOSITORY_URL="file://$SOURCE_REPOSITORY" \
+    SG_INFOSEC_VERBOSE=1 \
+    TERM=dumb \
+    bash "$ROOT_DIR/install-from-github.sh" "$SOURCE_SHA" >"$SECOND_OUTPUT" 2>&1; then
+    cat "$SECOND_OUTPUT" >&2
+    fail "repeat bootstrap failed"
+fi
+cat "$SECOND_OUTPUT"
 
+grep -Fq 'go build -o bin/sg-infosecd' "$SECOND_OUTPUT" || fail "verbose build output is missing"
 grep -Fq 'preserve-clean-install-marker' /etc/sg-infosec/sg-infosec.yaml || \
     fail "repeat install overwrote configuration"
 systemctl is-active --quiet sg-infosec-enforcer.service || fail "enforcer stopped after repeat install"
