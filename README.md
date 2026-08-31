@@ -89,7 +89,13 @@ The SHA appears twice intentionally: the first occurrence pins the installer its
 
 The bootstrap supports Debian and Ubuntu on `amd64` and `arm64`. It installs the required system packages, installs a checksum-verified Go toolchain when no compatible Go 1.23+ toolchain is available, builds all three binaries, installs the systemd and tmpfiles contracts, starts the enforcer before the core service, and verifies health and nftables readiness. Re-running the command preserves the existing configuration and database. It does not restart SG-Gateway or any VPN service.
 
-If installation fails after service deployment begins, the script prints the SG InfoSec service status and recent journal entries before exiting with a non-zero status.
+On an interactive terminal, the installer displays a green rotating progress marker and replaces each completed stage with a green check mark. It emits plain progress lines in CI and other non-interactive environments. Set `SG_INFOSEC_VERBOSE=1` to show the complete package, download and build output instead of hiding it in the temporary installation log:
+
+```bash
+sudo env SG_INFOSEC_VERBOSE=1 bash "$INSTALLER" "$SHA"
+```
+
+If installation fails, the failed stage is marked in red, the last installer log lines are printed, and—after service deployment begins—the script also prints the SG InfoSec service status and recent journal entries before exiting with a non-zero status.
 
 ## Build and install manually
 
