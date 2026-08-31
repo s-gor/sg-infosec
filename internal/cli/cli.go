@@ -204,7 +204,7 @@ func (r *runner) runDecisions(ctx context.Context, service Service, args []strin
 		if err := flags.Parse(args[1:]); err != nil || flags.NArg() != 0 || !validLimit(options.Limit) {
 			return r.usage("invalid decisions list arguments")
 		}
-		response, err := service.ListDecisions(ctx, options)
+		response, err := service.ListDecisions(ctx, *options)
 		if err != nil {
 			return r.failure(err)
 		}
@@ -281,7 +281,7 @@ func (r *runner) runAllowlist(ctx context.Context, service Service, args []strin
 		if err := flags.Parse(args[1:]); err != nil || flags.NArg() != 0 || !validLimit(options.Limit) {
 			return r.usage("invalid allowlist list arguments")
 		}
-		response, err := service.ListAllowlist(ctx, options)
+		response, err := service.ListAllowlist(ctx, *options)
 		if err != nil {
 			return r.failure(err)
 		}
@@ -350,7 +350,7 @@ func (r *runner) runAudit(ctx context.Context, service Service, args []string) i
 	if err := flags.Parse(args[1:]); err != nil || flags.NArg() != 0 || !validLimit(options.Limit) {
 		return r.usage("invalid audit list arguments")
 	}
-	response, err := service.ListAudit(ctx, options)
+	response, err := service.ListAudit(ctx, *options)
 	if err != nil {
 		return r.failure(err)
 	}
@@ -438,7 +438,7 @@ func newFlagSet(name string) *flag.FlagSet {
 	return set
 }
 
-func bindListOptions(flags *flag.FlagSet, decisions bool) client.ListOptions {
+func bindListOptions(flags *flag.FlagSet, decisions bool) *client.ListOptions {
 	var options client.ListOptions
 	flags.IntVar(&options.Limit, "limit", 50, "page size")
 	flags.StringVar(&options.Cursor, "cursor", "", "page cursor")
@@ -447,7 +447,7 @@ func bindListOptions(flags *flag.FlagSet, decisions bool) client.ListOptions {
 		flags.StringVar(&options.Scope, "scope", "", "scope filter")
 		flags.StringVar(&options.State, "state", "", "state filter")
 	}
-	return options
+	return &options
 }
 
 func validLimit(limit int) bool { return limit >= 1 && limit <= 200 }
