@@ -149,7 +149,7 @@ func TestExampleConfigurationLoads(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(cfg.Sources) != 2 || len(cfg.Policies) != 2 {
+	if len(cfg.Sources) != 2 || len(cfg.Policies) != 3 {
 		t.Fatalf("sources=%d policies=%d", len(cfg.Sources), len(cfg.Policies))
 	}
 }

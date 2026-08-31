@@ -21,9 +21,12 @@ func TestInstallFromGitHubRequiresPinnedCommitAndBootstrapsHost(t *testing.T) {
 		"git -C \"$SOURCE_DIR\" fetch --depth=1 origin \"$SOURCE_SHA\"",
 		"test \"$(git -C \"$SOURCE_DIR\" rev-parse HEAD)\" = \"$SOURCE_SHA\"",
 		"make build",
+		"bin/sg-infosec-ssh-agent",
 		"SG_INFOSEC_NO_START=1 ./packaging/install.sh",
 		"systemctl start sg-infosec-enforcer.service",
 		"systemctl start sg-infosec.service",
+		"systemctl start sg-infosec-ssh-agent.service",
+		"systemctl is-active --quiet sg-infosec-ssh-agent.service",
 		"sg-infosecctl health",
 		"sg-infosecctl nft status",
 	)
@@ -31,6 +34,8 @@ func TestInstallFromGitHubRequiresPinnedCommitAndBootstrapsHost(t *testing.T) {
 		"restart sg-gateway.service",
 		"try-restart sg-gateway.service",
 		"systemctl restart sg-gateway",
+		"restart ssh.service",
+		"restart sshd.service",
 		"curl | sh",
 	)
 }
@@ -97,8 +102,11 @@ func TestCleanInstallSmokeIsPartOfThePermanentGate(t *testing.T) {
 		"[OK] Checking system",
 		"non-interactive output contains terminal escape sequences",
 		"go build -o bin/sg-infosecd",
+		"go build -o bin/sg-infosec-ssh-agent",
 		"systemctl is-active --quiet sg-infosec-enforcer.service",
 		"systemctl is-active --quiet sg-infosec.service",
+		"systemctl is-active --quiet sg-infosec-ssh-agent.service",
+		"sg-infosecctl overview",
 		"/run/sg-infosec/enforcer.sock",
 		"/run/sg-infosec/control.sock",
 		"/run/sg-infosec/events.sock",

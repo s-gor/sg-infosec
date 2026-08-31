@@ -87,7 +87,10 @@ func TestInstallerPreservesConfigAndGrantsGatewaySocketAccess(t *testing.T) {
 		"install_if_missing",
 		"usermod -a -G \"$SERVICE_GROUP\" sg-gateway",
 		"systemd-tmpfiles --create \"$TMPFILES_PATH\"",
-		"systemctl enable --now sg-infosec-enforcer.service sg-infosec.service",
+		"systemctl enable sg-infosec-enforcer.service sg-infosec.service sg-infosec-ssh-agent.service",
+		"systemctl start sg-infosec-enforcer.service",
+		"systemctl start sg-infosec.service",
+		"systemctl start sg-infosec-ssh-agent.service",
 		"group membership takes effect after the next planned sg-gateway.service restart",
 	)
 	requireNotContains(t, installer, "curl ", "wget ", "sed -i", "iptables", "nft ", "try-restart sg-gateway.service", "restart sg-gateway.service")
@@ -98,8 +101,10 @@ func TestUninstallerPreservesStateUnlessPurgeIsExplicit(t *testing.T) {
 	requireContains(t, uninstaller,
 		"set -Eeuo pipefail",
 		"--purge",
-		"systemctl disable --now sg-infosec.service",
-		"rm -f -- \"$DAEMON_PATH\" \"$CTL_PATH\" \"$ENFORCER_PATH\" \"$UNIT_PATH\" \"$ENFORCER_UNIT_PATH\" \"$TMPFILES_PATH\"",
+		"systemctl disable --now sg-infosec-ssh-agent.service",
+		"systemctl disable --now sg-infosec.service sg-infosec-enforcer.service",
+		"\"$SSH_AGENT_PATH\"",
+		"\"$SSH_AGENT_UNIT_PATH\"",
 		"if (( PURGE )); then",
 		`rm -rf -- "$CONFIG_ROOT" "$STATE_ROOT" "$RUNTIME_ROOT"`,
 	)
@@ -131,7 +136,7 @@ func TestInstallerAndUninstallerAreRepeatableInDestdir(t *testing.T) {
 	if err := os.MkdirAll(fakeBin, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{"sg-infosecd", "sg-infosecctl", "sg-infosec-enforcerd"} {
+	for _, name := range []string{"sg-infosecd", "sg-infosecctl", "sg-infosec-enforcerd", "sg-infosec-ssh-agent"} {
 		path := filepath.Join(fakeBin, name)
 		if err := os.WriteFile(path, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
 			t.Fatal(err)
@@ -143,6 +148,7 @@ func TestInstallerAndUninstallerAreRepeatableInDestdir(t *testing.T) {
 		"SG_INFOSEC_DAEMON_SOURCE="+filepath.Join(fakeBin, "sg-infosecd"),
 		"SG_INFOSEC_CTL_SOURCE="+filepath.Join(fakeBin, "sg-infosecctl"),
 		"SG_INFOSEC_ENFORCER_SOURCE="+filepath.Join(fakeBin, "sg-infosec-enforcerd"),
+		"SG_INFOSEC_SSH_AGENT_SOURCE="+filepath.Join(fakeBin, "sg-infosec-ssh-agent"),
 	)
 	run := func(script string, args ...string) {
 		t.Helper()
@@ -171,10 +177,13 @@ func TestInstallerAndUninstallerAreRepeatableInDestdir(t *testing.T) {
 		"usr/local/sbin/sg-infosecd",
 		"usr/local/sbin/sg-infosecctl",
 		"usr/local/sbin/sg-infosec-enforcerd",
+		"usr/local/sbin/sg-infosec-ssh-agent",
 		"etc/systemd/system/sg-infosec.service",
 		"etc/systemd/system/sg-infosec-enforcer.service",
+		"etc/systemd/system/sg-infosec-ssh-agent.service",
 		"usr/lib/tmpfiles.d/sg-infosec.conf",
 		"etc/sg-infosec/sources.d/local-admin.yaml",
+		"etc/sg-infosec/policies.d/ssh.yaml",
 	} {
 		if _, err := os.Stat(filepath.Join(destdir, path)); err != nil {
 			t.Errorf("missing installed path %s: %v", path, err)
@@ -187,6 +196,9 @@ func TestInstallerAndUninstallerAreRepeatableInDestdir(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(destdir, "usr/local/sbin/sg-infosecd")); !os.IsNotExist(err) {
 		t.Fatalf("ordinary uninstall kept daemon: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(destdir, "usr/local/sbin/sg-infosec-ssh-agent")); !os.IsNotExist(err) {
+		t.Fatalf("ordinary uninstall kept SSH agent: %v", err)
 	}
 
 	run("packaging/install.sh")

@@ -17,6 +17,7 @@ build:
 	go build -o bin/sg-infosecd ./cmd/sg-infosecd
 	go build -o bin/sg-infosecctl ./cmd/sg-infosecctl
 	go build -o bin/sg-infosec-enforcerd ./cmd/sg-infosec-enforcerd
+	go build -o bin/sg-infosec-ssh-agent ./cmd/sg-infosec-ssh-agent
 
 check: fmt-check vet test race build
 

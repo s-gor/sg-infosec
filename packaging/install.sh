@@ -9,13 +9,16 @@ NO_START="${SG_INFOSEC_NO_START:-0}"
 DAEMON_SOURCE="${SG_INFOSEC_DAEMON_SOURCE:-$ROOT_DIR/bin/sg-infosecd}"
 CTL_SOURCE="${SG_INFOSEC_CTL_SOURCE:-$ROOT_DIR/bin/sg-infosecctl}"
 ENFORCER_SOURCE="${SG_INFOSEC_ENFORCER_SOURCE:-$ROOT_DIR/bin/sg-infosec-enforcerd}"
+SSH_AGENT_SOURCE="${SG_INFOSEC_SSH_AGENT_SOURCE:-$ROOT_DIR/bin/sg-infosec-ssh-agent}"
 
 root_path() { printf '%s%s' "$DESTDIR" "$1"; }
 DAEMON_PATH="$(root_path /usr/local/sbin/sg-infosecd)"
 CTL_PATH="$(root_path /usr/local/sbin/sg-infosecctl)"
 ENFORCER_PATH="$(root_path /usr/local/sbin/sg-infosec-enforcerd)"
+SSH_AGENT_PATH="$(root_path /usr/local/sbin/sg-infosec-ssh-agent)"
 UNIT_PATH="$(root_path /etc/systemd/system/sg-infosec.service)"
 ENFORCER_UNIT_PATH="$(root_path /etc/systemd/system/sg-infosec-enforcer.service)"
+SSH_AGENT_UNIT_PATH="$(root_path /etc/systemd/system/sg-infosec-ssh-agent.service)"
 TMPFILES_PATH="$(root_path /usr/lib/tmpfiles.d/sg-infosec.conf)"
 CONFIG_ROOT="$(root_path /etc/sg-infosec)"
 
@@ -27,6 +30,7 @@ fi
 [[ -x "$DAEMON_SOURCE" ]] || fail "missing executable: $DAEMON_SOURCE"
 [[ -x "$CTL_SOURCE" ]] || fail "missing executable: $CTL_SOURCE"
 [[ -x "$ENFORCER_SOURCE" ]] || fail "missing executable: $ENFORCER_SOURCE"
+[[ -x "$SSH_AGENT_SOURCE" ]] || fail "missing executable: $SSH_AGENT_SOURCE"
 
 if [[ -z "$DESTDIR" ]]; then
     getent group "$SERVICE_GROUP" >/dev/null 2>&1 || groupadd --system "$SERVICE_GROUP"
@@ -43,8 +47,10 @@ fi
 install -D -m 0755 "$DAEMON_SOURCE" "$DAEMON_PATH"
 install -D -m 0755 "$CTL_SOURCE" "$CTL_PATH"
 install -D -m 0755 "$ENFORCER_SOURCE" "$ENFORCER_PATH"
+install -D -m 0755 "$SSH_AGENT_SOURCE" "$SSH_AGENT_PATH"
 install -D -m 0644 "$ROOT_DIR/packaging/systemd/sg-infosec.service" "$UNIT_PATH"
 install -D -m 0644 "$ROOT_DIR/packaging/systemd/sg-infosec-enforcer.service" "$ENFORCER_UNIT_PATH"
+install -D -m 0644 "$ROOT_DIR/packaging/systemd/sg-infosec-ssh-agent.service" "$SSH_AGENT_UNIT_PATH"
 install -D -m 0644 "$ROOT_DIR/packaging/tmpfiles.d/sg-infosec.conf" "$TMPFILES_PATH"
 
 install_if_missing() {
@@ -62,6 +68,8 @@ install_if_missing "$ROOT_DIR/config/example/sg-infosec.yaml" \
     "$CONFIG_ROOT/sg-infosec.yaml" 0640
 install_if_missing "$ROOT_DIR/config/example/sources.d/local-admin.yaml" \
     "$CONFIG_ROOT/sources.d/local-admin.yaml" 0640
+install_if_missing "$ROOT_DIR/config/example/policies.d/ssh.yaml" \
+    "$CONFIG_ROOT/policies.d/ssh.yaml" 0640
 
 GATEWAY_MEMBERSHIP_CHANGED=0
 if [[ -z "$DESTDIR" ]] && id -u sg-gateway >/dev/null 2>&1; then
@@ -81,7 +89,10 @@ if [[ -z "$DESTDIR" ]]; then
     systemd-tmpfiles --create "$TMPFILES_PATH"
     systemctl daemon-reload
     if [[ "$NO_START" != "1" ]]; then
-        systemctl enable --now sg-infosec-enforcer.service sg-infosec.service
+        systemctl enable sg-infosec-enforcer.service sg-infosec.service sg-infosec-ssh-agent.service
+        systemctl start sg-infosec-enforcer.service
+        systemctl start sg-infosec.service
+        systemctl start sg-infosec-ssh-agent.service
     fi
 fi
 
