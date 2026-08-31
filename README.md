@@ -70,10 +70,19 @@ bash scripts/smoke-sg-gateway-adapter.sh /path/to/sg-gateway-v22
 Use a published full commit SHA and run the bootstrap from that same immutable commit:
 
 ```bash
-SHA="<published-full-commit-sha>"
-curl -fsSL \
-  "https://raw.githubusercontent.com/s-gor/sg-infosec/${SHA}/install-from-github.sh" |
-  sudo bash -s -- "$SHA"
+(
+  set -Eeuo pipefail
+
+  SHA="<published-full-commit-sha>"
+  INSTALLER="$(mktemp)"
+  trap 'rm -f "$INSTALLER"' EXIT
+
+  curl -fsSL --retry 3 \
+    --output "$INSTALLER" \
+    "https://raw.githubusercontent.com/s-gor/sg-infosec/${SHA}/install-from-github.sh"
+
+  sudo bash "$INSTALLER" "$SHA"
+)
 ```
 
 The SHA appears twice intentionally: the first occurrence pins the installer itself, and the second requires that installer to fetch, verify and build exactly the same source commit.
