@@ -34,7 +34,7 @@ func TestClientSubmitEventUsesEventsRoute(t *testing.T) {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusAccepted)
-		_, _ = w.Write([]byte(`{"accepted":true,"decision_id":"decision-1","request_id":"request-1"}`))
+		_, _ = w.Write([]byte("{\"accepted\":true,\"decision_id\":\"decision-1\",\"request_id\":\"request-1\"}"))
 	})}
 	go server.Serve(listener)
 	defer server.Close()
