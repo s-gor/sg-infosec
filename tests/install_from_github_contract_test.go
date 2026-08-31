@@ -34,6 +34,18 @@ func TestInstallFromGitHubRequiresPinnedCommitAndBootstrapsHost(t *testing.T) {
 	)
 }
 
+func TestREADMEUsesThePinnedCleanInstallEntrypoint(t *testing.T) {
+	readme := readRepositoryFile(t, "README.md")
+	requireContains(t, readme,
+		"## Install on a clean Debian or Ubuntu host",
+		`SHA="<published-full-commit-sha>"`,
+		`https://raw.githubusercontent.com/s-gor/sg-infosec/${SHA}/install-from-github.sh`,
+		`sudo bash -s -- "$SHA"`,
+		"The SHA appears twice intentionally",
+		"does not restart SG-Gateway",
+	)
+}
+
 func TestCleanInstallSmokeIsPartOfThePermanentGate(t *testing.T) {
 	smoke := readRepositoryFile(t, "scripts/smoke-install-from-github.sh")
 	requireContains(t, smoke,
