@@ -13,7 +13,7 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       - name: Check out exact commit
         uses: actions/checkout@v6
@@ -46,3 +46,9 @@ jobs:
           sudo env \
             "PATH=$PATH" \
             bash scripts/smoke-systemd-install.sh
+
+      - name: Run clean install bootstrap smoke
+        run: |
+          sudo env \
+            "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
+            bash scripts/smoke-install-from-github.sh
