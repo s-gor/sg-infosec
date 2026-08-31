@@ -32,9 +32,12 @@ git clone --quiet --bare "$ROOT_DIR" "$SOURCE_REPOSITORY"
 rm -rf /usr/local/go
 
 SG_INFOSEC_REPOSITORY_URL="file://$SOURCE_REPOSITORY" \
+SG_INFOSEC_FORCE_GO_INSTALL=1 \
     bash "$ROOT_DIR/install-from-github.sh" "$SOURCE_SHA"
 INSTALLED=1
 
+[[ "$(/usr/local/go/bin/go env GOVERSION)" == "go1.24.12" ]] || \
+    fail "bootstrap did not install the pinned Go toolchain"
 systemctl is-active --quiet sg-infosec-enforcer.service || fail "enforcer is not active"
 systemctl is-active --quiet sg-infosec.service || fail "core is not active"
 [[ -S /run/sg-infosec/enforcer.sock ]] || fail "enforcer socket is missing"
