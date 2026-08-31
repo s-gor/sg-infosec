@@ -1,0 +1,12 @@
+policy_id: local-ssh-login
+enabled: true
+event_type: auth.failed
+scope: ssh
+source_id: local-admin
+threshold: 5
+window: 10m
+base_duration: 30m
+escalation_factor: 4
+max_duration: 24h
+reset_interval: 720h
+backend: nftables
