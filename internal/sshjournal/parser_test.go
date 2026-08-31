@@ -1,6 +1,7 @@
 package sshjournal
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 	"time"
@@ -39,7 +40,12 @@ func TestParseRecordRecognizesOpenSSHFailures(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			record := []byte(`{"MESSAGE":` + quote(tt.message) + `,"__CURSOR":"cursor-1","_SOURCE_REALTIME_TIMESTAMP":"1788182400000000","_SYSTEMD_UNIT":"ssh.service"}`)
+			record := encodeRecord(t, map[string]string{
+				"MESSAGE":                    tt.message,
+				"__CURSOR":                   "cursor-1",
+				"_SOURCE_REALTIME_TIMESTAMP": "1788182400000000",
+				"_SYSTEMD_UNIT":              "ssh.service",
+			})
 			event, ok := ParseRecord(record)
 			if !ok {
 				t.Fatal("record was not recognized")
@@ -62,7 +68,12 @@ func TestParseRecordRecognizesOpenSSHFailures(t *testing.T) {
 }
 
 func TestParseRecordIsDeterministicAndCanonicalizesMappedIPv4(t *testing.T) {
-	record := []byte(`{"MESSAGE":"Failed password for root from ::ffff:192.0.2.10 port 22 ssh2","__CURSOR":"stable-cursor","_SOURCE_REALTIME_TIMESTAMP":"1788182400123456","_SYSTEMD_UNIT":"sshd.service"}`)
+	record := encodeRecord(t, map[string]string{
+		"MESSAGE":                    "Failed password for root from ::ffff:192.0.2.10 port 22 ssh2",
+		"__CURSOR":                   "stable-cursor",
+		"_SOURCE_REALTIME_TIMESTAMP": "1788182400123456",
+		"_SYSTEMD_UNIT":              "sshd.service",
+	})
 	first, ok := ParseRecord(record)
 	if !ok {
 		t.Fatal("first parse failed")
@@ -80,20 +91,24 @@ func TestParseRecordIsDeterministicAndCanonicalizesMappedIPv4(t *testing.T) {
 }
 
 func TestParseRecordIgnoresSuccessNoiseAndInvalidJSON(t *testing.T) {
-	for _, record := range [][]byte{
-		[]byte(`{"MESSAGE":"Accepted publickey for root from 192.0.2.1 port 22 ssh2","__CURSOR":"ok","_SYSTEMD_UNIT":"ssh.service"}`),
-		[]byte(`{"MESSAGE":"Connection closed by authenticating user root 192.0.2.1 port 22 [preauth]","__CURSOR":"noise","_SYSTEMD_UNIT":"ssh.service"}`),
-		[]byte(`{"MESSAGE":"Failed password for root from 192.0.2.1 port 22 ssh2","__CURSOR":"wrong-unit","_SYSTEMD_UNIT":"nginx.service"}`),
+	records := [][]byte{
+		encodeRecord(t, map[string]string{"MESSAGE": "Accepted publickey for root from 192.0.2.1 port 22 ssh2", "__CURSOR": "ok", "_SYSTEMD_UNIT": "ssh.service"}),
+		encodeRecord(t, map[string]string{"MESSAGE": "Connection closed by authenticating user root 192.0.2.1 port 22 [preauth]", "__CURSOR": "noise", "_SYSTEMD_UNIT": "ssh.service"}),
+		encodeRecord(t, map[string]string{"MESSAGE": "Failed password for root from 192.0.2.1 port 22 ssh2", "__CURSOR": "wrong-unit", "_SYSTEMD_UNIT": "nginx.service"}),
 		[]byte(`not-json`),
-	} {
+	}
+	for _, record := range records {
 		if event, ok := ParseRecord(record); ok {
 			t.Fatalf("unexpected event=%+v for %q", event, record)
 		}
 	}
 }
 
-func quote(value string) string {
-	value = strings.ReplaceAll(value, `\`, `\\`)
-	value = strings.ReplaceAll(value, `"`, `\"`)
-	return `"` + value + `"`
+func encodeRecord(t *testing.T, value map[string]string) []byte {
+	t.Helper()
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return encoded
 }
