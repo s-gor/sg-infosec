@@ -65,14 +65,48 @@ The optional SG-Gateway adapter smoke requires the adapter checkout/path:
 bash scripts/smoke-sg-gateway-adapter.sh /path/to/sg-gateway-v22
 ```
 
-## Build and install
+## Install on a clean Debian or Ubuntu host
+
+Use a published full commit SHA and run the bootstrap from that same immutable commit:
+
+```bash
+(
+  set -Eeuo pipefail
+
+  SHA="<published-full-commit-sha>"
+  INSTALLER="$(mktemp)"
+  trap 'rm -f "$INSTALLER"' EXIT
+
+  curl -fsSL --retry 3 \
+    --output "$INSTALLER" \
+    "https://raw.githubusercontent.com/s-gor/sg-infosec/${SHA}/install-from-github.sh"
+
+  sudo bash "$INSTALLER" "$SHA"
+)
+```
+
+The SHA appears twice intentionally: the first occurrence pins the installer itself, and the second requires that installer to fetch, verify and build exactly the same source commit.
+
+The bootstrap supports Debian and Ubuntu on `amd64` and `arm64`. It installs the required system packages, installs a checksum-verified Go toolchain when no compatible Go 1.23+ toolchain is available, builds all three binaries, installs the systemd and tmpfiles contracts, starts the enforcer before the core service, and verifies health and nftables readiness. Re-running the command preserves the existing configuration and database. It does not restart SG-Gateway or any VPN service.
+
+On an interactive terminal, the installer displays a green rotating progress marker and replaces each completed stage with a green check mark. It emits plain progress lines in CI and other non-interactive environments. Set `SG_INFOSEC_VERBOSE=1` to show the complete package, download and build output instead of hiding it in the temporary installation log:
+
+```bash
+sudo env SG_INFOSEC_VERBOSE=1 bash "$INSTALLER" "$SHA"
+```
+
+If installation fails, the failed stage is marked in red, the last installer log lines are printed, and—after service deployment begins—the script also prints the SG InfoSec service status and recent journal entries before exiting with a non-zero status.
+
+## Build and install manually
+
+For development from an existing checkout with all build dependencies already installed:
 
 ```bash
 make build
 sudo packaging/install.sh
 ```
 
-The installer:
+The package installer:
 
 - creates the unprivileged `sg-infosec` user/group when absent;
 - installs all three binaries;
