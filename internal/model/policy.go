@@ -45,6 +45,7 @@ type Policy struct {
 	EventType        EventType
 	Scope            Scope
 	SourceID         string
+	DecisionSourceID string
 	Threshold        uint32
 	Window           time.Duration
 	BaseDuration     time.Duration

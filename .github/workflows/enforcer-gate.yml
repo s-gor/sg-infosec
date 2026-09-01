@@ -5,6 +5,7 @@ on:
     branches:
       - feature/enforcer-complete
       - codex/enforcer-corrective-validation
+      - feature/autonomous-detection-v1
   workflow_dispatch:
 
 permissions:

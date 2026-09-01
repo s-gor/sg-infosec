@@ -81,6 +81,10 @@ func (e *Engine) Process(ctx context.Context, source sourceauth.Identity, event 
 			if policy.Backend == model.BackendNFTables && policy.Scope != model.ScopeSSH {
 				return fmt.Errorf("policy %q uses nftables for non-SSH scope %q", policy.ID, policy.Scope)
 			}
+			decisionSourceID := source.SourceID
+			if policy.DecisionSourceID != "" {
+				decisionSourceID = policy.DecisionSourceID
+			}
 			count, err := tx.CountEvents(ctx, source.SourceID, event.EventType, event.Scope, event.IP, now.Add(-policy.Window))
 			if err != nil {
 				return err
@@ -95,7 +99,7 @@ func (e *Engine) Process(ctx context.Context, source sourceauth.Identity, event 
 			if allowlisted {
 				continue
 			}
-			active, err := tx.FindActiveDecision(ctx, source.SourceID, event.Scope, event.IP, now)
+			active, err := tx.FindActiveDecision(ctx, decisionSourceID, event.Scope, event.IP, now)
 			if err != nil {
 				return err
 			}
@@ -104,7 +108,7 @@ func (e *Engine) Process(ctx context.Context, source sourceauth.Identity, event 
 			}
 
 			strike := uint32(1)
-			previous, err := tx.FindLastPolicyDecision(ctx, source.SourceID, policy.ID, event.IP, now.Add(-policy.ResetInterval))
+			previous, err := tx.FindLastPolicyDecision(ctx, decisionSourceID, policy.ID, event.IP, now.Add(-policy.ResetInterval))
 			if err != nil {
 				return err
 			}
@@ -116,11 +120,11 @@ func (e *Engine) Process(ctx context.Context, source sourceauth.Identity, event 
 			if err != nil {
 				return fmt.Errorf("generate decision ID: %w", err)
 			}
-			decision := model.Decision{ID: id, SourceID: source.SourceID, PolicyID: policy.ID, Scope: policy.Scope, IP: event.IP, Backend: policy.Backend, State: model.DecisionActive, ReasonCode: "threshold_exceeded", Strike: strike, StartsAt: now, ExpiresAt: now.Add(duration), CreatedAt: now, UpdatedAt: now}
+			decision := model.Decision{ID: id, SourceID: decisionSourceID, PolicyID: policy.ID, Scope: policy.Scope, IP: event.IP, Backend: policy.Backend, State: model.DecisionActive, ReasonCode: "threshold_exceeded", Strike: strike, StartsAt: now, ExpiresAt: now.Add(duration), CreatedAt: now, UpdatedAt: now}
 			if err := tx.InsertDecision(ctx, decision); err != nil {
 				return err
 			}
-			if err := tx.AppendAudit(ctx, model.AuditEntry{OccurredAt: now, Actor: "system:" + source.SourceID, Action: "decision.auto_created", TargetType: "decision", TargetID: id, RequestID: event.EventID, Result: "success", Details: map[string]any{"policy_id": policy.ID, "scope": string(policy.Scope), "strike": strike}}); err != nil {
+			if err := tx.AppendAudit(ctx, model.AuditEntry{OccurredAt: now, Actor: "system:" + source.SourceID, Action: "decision.auto_created", TargetType: "decision", TargetID: id, RequestID: event.EventID, Result: "success", Details: map[string]any{"policy_id": policy.ID, "scope": string(policy.Scope), "strike": strike, "event_source_id": source.SourceID, "decision_source_id": decisionSourceID}}); err != nil {
 				return err
 			}
 			if result.DecisionID == "" {

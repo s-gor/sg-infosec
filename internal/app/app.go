@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -16,7 +17,9 @@ import (
 	"github.com/s-gor/sg-infosec/internal/clock"
 	"github.com/s-gor/sg-infosec/internal/config"
 	"github.com/s-gor/sg-infosec/internal/decision"
+	"github.com/s-gor/sg-infosec/internal/detection"
 	"github.com/s-gor/sg-infosec/internal/health"
+	"github.com/s-gor/sg-infosec/internal/journal"
 	"github.com/s-gor/sg-infosec/internal/nftsync"
 	"github.com/s-gor/sg-infosec/internal/retention"
 	"github.com/s-gor/sg-infosec/internal/sourceauth"
@@ -36,6 +39,7 @@ type Dependencies struct {
 	RetentionInterval time.Duration
 	EnforcerInterval  time.Duration
 	EnforcerClient    EnforcerClient
+	DetectorSource    detection.RecordSource
 }
 
 type App struct {
@@ -45,6 +49,7 @@ type App struct {
 	control        *unixhttp.Server
 	retention      *retention.Worker
 	nftWorker      *nftsync.Worker
+	detector       *detection.Worker
 	enforcerClient EnforcerClient
 	closeOnce      sync.Once
 	closeErr       error
@@ -72,6 +77,14 @@ func New(cfg config.Config, dependencies Dependencies) (*App, error) {
 	if dependencies.UID == 0 && os.Getuid() != 0 {
 		dependencies.UID = uint32(os.Getuid())
 	}
+	detectorEnabled := true
+	if dependencies.DetectorSource == nil {
+		var err error
+		detectorEnabled, err = autonomousDetectionEnabled(os.Getenv("SG_INFOSEC_AUTONOMOUS_DETECTION"))
+		if err != nil {
+			return nil, err
+		}
+	}
 
 	lock, err := acquireInstanceLock(cfg.DatabasePath + ".lock")
 	if err != nil {
@@ -98,7 +111,17 @@ func New(cfg config.Config, dependencies Dependencies) (*App, error) {
 	application.enforcerClient = dependencies.EnforcerClient
 	application.nftWorker = nftsync.New(database, dependencies.EnforcerClient, dependencies.Clock, dependencies.EnforcerInterval)
 	decisionService := decision.NewService(database, dependencies.Clock)
-	eventsProcessor := events.NewProcessor(database, dependencies.Clock, cfg.Policies...).WithDecisionNotifier(application.nftWorker)
+	policies := cfg.Policies
+	if detectorEnabled {
+		policies = detection.MergePolicies(cfg.Policies)
+	}
+	eventsProcessor := events.NewProcessor(database, dependencies.Clock, policies...).WithDecisionNotifier(application.nftWorker)
+	if detectorEnabled {
+		if dependencies.DetectorSource == nil {
+			dependencies.DetectorSource = journal.New(journal.DefaultConfig())
+		}
+		application.detector = detection.NewWorker(dependencies.DetectorSource, eventsProcessor, nil)
+	}
 	eventsHandler := events.NewHandler(eventsProcessor, cfg.EventBodyLimit)
 	knownSources := make([]string, 0, len(cfg.Sources))
 	for _, source := range cfg.Sources {
@@ -120,6 +143,17 @@ func New(cfg config.Config, dependencies Dependencies) (*App, error) {
 		return nil, err
 	}
 	return application, nil
+}
+
+func autonomousDetectionEnabled(value string) (bool, error) {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "", "1", "true", "on", "enabled":
+		return true, nil
+	case "0", "false", "off", "disabled":
+		return false, nil
+	default:
+		return false, fmt.Errorf("SG_INFOSEC_AUTONOMOUS_DETECTION must be 0 or 1")
+	}
 }
 
 func (a *App) Run(ctx context.Context) error {
@@ -147,12 +181,18 @@ func (a *App) Run(ctx context.Context) error {
 	if a.nftWorker != nil {
 		componentCount++
 	}
+	if a.detector != nil {
+		componentCount++
+	}
 	results := make(chan componentResult, componentCount)
 	go func() { results <- componentResult{name: "events server", err: a.events.Serve()} }()
 	go func() { results <- componentResult{name: "control server", err: a.control.Serve()} }()
 	go func() { results <- componentResult{name: "retention worker", err: a.retention.Run(runCtx)} }()
 	if a.nftWorker != nil {
 		go func() { results <- componentResult{name: "nftables sync worker", err: a.nftWorker.Run(runCtx)} }()
+	}
+	if a.detector != nil {
+		go func() { results <- componentResult{name: "autonomous detector", err: a.detector.Run(runCtx)} }()
 	}
 	var runErr error
 	select {
