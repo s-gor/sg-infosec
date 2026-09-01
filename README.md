@@ -4,14 +4,17 @@ SG InfoSec is a local-first security service for administrative panels and selec
 
 ## Current status
 
-The Linux MVP is implemented as three binaries:
+The Linux service is implemented as three binaries:
 
-- `sg-infosecd` — unprivileged event processing, SQLite state, policy engine, application decisions and control API;
+- `sg-infosecd` — unprivileged autonomous detection, event processing, SQLite state, policy engine, application decisions and control API;
 - `sg-infosec-enforcerd` — minimal root component that owns only `inet sg_infosec` and applies typed nftables decisions;
 - `sg-infosecctl` — local administration and diagnostics CLI.
 
 Implemented security contracts:
 
+- autonomous collection of new OpenSSH, Nginx and SG-Gateway records from the systemd journal;
+- strict parsing of authentication failures, invalid-user probes, reviewed administrative attack paths and structured SG-Gateway failures;
+- bounded per-IP sliding windows for burst and slow brute force, username enumeration, HTTP scans and cross-service attacks;
 - source identity from Linux `SO_PEERCRED`, never from a claimed JSON identity;
 - strict JSON/YAML schemas, bounded request bodies and rejection of sensitive metadata;
 - transactional SQLite persistence, policy windows, escalation, allowlist and audit;
@@ -33,6 +36,26 @@ Not included yet:
 - Windows service and Android agent packages.
 
 The SG-Gateway backend adapter is maintained separately so the panel remains fail-open if SG InfoSec is unavailable. Administrative login/API decisions are applied by panel middleware; nftables is reserved for SSH and an explicitly dedicated panel port.
+
+## Autonomous protection
+
+Autonomous mode is enabled by default. The unprivileged service follows only new journal records from `ssh.service`, `sshd.service`, `nginx.service` and `sg-gateway.service`; it does not replay old journal history after a restart.
+
+Default scenarios include:
+
+- 5 SSH failures in 10 minutes;
+- 12 SSH failures in 60 minutes;
+- 6 distinct invalid usernames in 15 minutes;
+- 6 reviewed administrative-path probes in 5 minutes;
+- 5 panel authentication failures in 10 minutes;
+- 10 API authentication failures in 10 minutes;
+- a weighted cross-service score from at least two services.
+
+SSH detections create narrowly scoped TCP/22 nftables decisions. Panel and API detections create application decisions for SG-Gateway middleware. Cross-service detection creates only the scopes represented by the evidence and never creates an all-port ban.
+
+The detector keeps at most 4096 active IP states, expires inactive state after 60 minutes, caps stored normalized findings, strips HTTP query strings, hashes usernames used for distinct counts, and does not retain passwords, tokens, cookies or request bodies.
+
+Operational details, thresholds, disable instructions and deliberate non-goals are documented in [`docs/autonomous-detection.md`](docs/autonomous-detection.md).
 
 ## Requirements
 
@@ -113,6 +136,7 @@ The package installer:
 - installs the two systemd units and tmpfiles contract;
 - preserves every existing configuration and database file;
 - grants an existing `sg-gateway` account supplementary-group access to local sockets;
+- grants the unprivileged core read-only access to the systemd journal through `systemd-journal` supplementary membership;
 - starts the enforcer before the unprivileged core;
 - does not restart or modify VPN services.
 

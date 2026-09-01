@@ -60,6 +60,8 @@ install_if_missing() {
 
 install_if_missing "$ROOT_DIR/config/example/sg-infosec.yaml" \
     "$CONFIG_ROOT/sg-infosec.yaml" 0640
+install_if_missing "$ROOT_DIR/config/example/detection-rules.json" \
+    "$CONFIG_ROOT/detection-rules.json" 0640
 install_if_missing "$ROOT_DIR/config/example/sources.d/local-admin.yaml" \
     "$CONFIG_ROOT/sources.d/local-admin.yaml" 0640
 

@@ -10,11 +10,13 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
 	"github.com/s-gor/sg-infosec/internal/app"
 	"github.com/s-gor/sg-infosec/internal/buildinfo"
 	"github.com/s-gor/sg-infosec/internal/config"
+	"github.com/s-gor/sg-infosec/internal/detection"
 )
 
 type application interface {
@@ -23,9 +25,10 @@ type application interface {
 }
 
 type runtimeDependencies struct {
-	loadConfig func(string) (config.Config, error)
-	newApp     func(config.Config) (application, error)
-	context    func() (context.Context, context.CancelFunc)
+	loadConfig      func(string) (config.Config, error)
+	validateRuntime func() error
+	newApp          func(config.Config) (application, error)
+	context         func() (context.Context, context.CancelFunc)
 }
 
 func main() { os.Exit(run(os.Args[1:], os.Stdout, os.Stderr)) }
@@ -33,6 +36,14 @@ func main() { os.Exit(run(os.Args[1:], os.Stdout, os.Stderr)) }
 func run(args []string, stdout, stderr io.Writer) int {
 	return runWith(args, stdout, stderr, runtimeDependencies{
 		loadConfig: config.Load,
+		validateRuntime: func() error {
+			path := strings.TrimSpace(os.Getenv("SG_INFOSEC_DETECTION_RULES"))
+			if path == "" {
+				path = detection.DefaultRulesPath
+			}
+			_, err := detection.LoadRuleSet(path)
+			return err
+		},
 		newApp: func(cfg config.Config) (application, error) {
 			return app.New(cfg, app.Dependencies{})
 		},
@@ -72,6 +83,12 @@ func runWith(args []string, stdout, stderr io.Writer, deps runtimeDependencies) 
 		return 2
 	}
 	if *checkConfig {
+		if deps.validateRuntime != nil {
+			if err := deps.validateRuntime(); err != nil {
+				fmt.Fprintf(stderr, "runtime configuration: %v\n", err)
+				return 2
+			}
+		}
 		return 0
 	}
 	application, err := deps.newApp(cfg)

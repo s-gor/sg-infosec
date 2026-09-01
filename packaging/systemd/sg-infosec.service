@@ -1,6 +1,7 @@
 [Unit]
 Description=SG InfoSec local security service
 After=local-fs.target systemd-tmpfiles-setup.service sg-infosec-enforcer.service
+After=systemd-journald.service
 Requires=sg-infosec-enforcer.service
 Before=sg-gateway.service
 
@@ -8,6 +9,9 @@ Before=sg-gateway.service
 Type=simple
 User=sg-infosec
 Group=sg-infosec
+SupplementaryGroups=systemd-journal
+Environment=SG_INFOSEC_AUTONOMOUS_DETECTION=1
+Environment=SG_INFOSEC_DETECTION_RULES=/etc/sg-infosec/detection-rules.json
 ExecStartPre=/usr/local/sbin/sg-infosecd --config /etc/sg-infosec/sg-infosec.yaml --check-config
 ExecStart=/usr/local/sbin/sg-infosecd --config /etc/sg-infosec/sg-infosec.yaml
 StateDirectory=sg-infosec

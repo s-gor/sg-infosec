@@ -1,10 +1,12 @@
-name: SG InfoSec enforcer gate
+name: SG InfoSec complete gate
 
 on:
   push:
     branches:
       - feature/enforcer-complete
       - codex/enforcer-corrective-validation
+      - feature/autonomous-detection-v1
+      - feature/infosec-complete-v1
   workflow_dispatch:
 
 permissions:
