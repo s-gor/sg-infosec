@@ -65,8 +65,8 @@ systemctl is-active --quiet nginx.service || fail "nginx is not active"
 [[ -S /run/sg-infosec/control.sock ]] || fail "control socket is missing"
 [[ -S /run/sg-infosec/web.sock ]] || fail "web socket is missing"
 
-SETUP_CODE="$(grep -Eo 'One-time setup code: [A-Z2-9]{4}-[A-Z2-9]{4}-[A-Z2-9]{4}' "$INSTALL_OUTPUT" | tail -n1 | awk '{print $4}')"
-[[ "$SETUP_CODE" =~ ^[A-Z2-9]{4}-[A-Z2-9]{4}-[A-Z2-9]{4}$ ]] || fail "setup code was not emitted"
+SETUP_CODE="$(grep -Eo 'One-time setup code: [0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}' "$INSTALL_OUTPUT" | tail -n1 | awk '{print $4}')"
+[[ "$SETUP_CODE" =~ ^[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}$ ]] || fail "setup code was not emitted"
 
 curl --fail --silent --show-error --insecure \
     https://127.0.0.1:64443/infosec/setup >"$SETUP_PAGE"
