@@ -161,7 +161,7 @@ func (a *application) handleLogin(w http.ResponseWriter, r *http.Request) {
 				status = http.StatusTooManyRequests
 				message = "Слишком много неудачных попыток. Повторите позже."
 			}
-			a.renderPublicStatus(w, "Вход", `<section class="auth-card"><h1>SG InfoSec</h1><div class="error">`+html.EscapeString(message)+`</div><a class="button secondary" href="`+a.login+`">Вернуться</a></section>`, status)
+			a.renderPublicStatus(w, "Вход", `<section class="auth-card"><h1>Вход</h1><div class="error">`+html.EscapeString(message)+`</div><a class="button secondary" href="`+a.login+`">Вернуться</a></section>`, status)
 			return
 		}
 		session, err := a.auth.NewSession(username, a.cfg.SessionTTL)
@@ -215,7 +215,7 @@ func (a *application) decisions(w http.ResponseWriter, r *http.Request, username
 	if rows.Len() == 0 {
 		rows.WriteString(`<tr><td colspan="5" class="muted">Активных блокировок нет.</td></tr>`)
 	}
-	content := `<div class="page-head"><div><h1>Блокировки</h1><p>Решения SG InfoSec, применённые ядром защиты.</p></div></div><section class="panel"><h2>Добавить вручную</h2><form class="form-grid" method="post" action="` + a.cfg.BasePath + `decisions/add"><input type="hidden" name="csrf" value="` + html.EscapeString(csrf) + `"><label>IP<input name="ip" placeholder="203.0.113.10" required></label><label>Область<input name="scope" value="ssh" required></label><label>Длительность<input name="duration" value="1h" required></label><label class="wide">Причина<input name="reason" value="manual-web" required></label><button type="submit">Заблокировать</button></form></section><section class="panel table-wrap"><table><thead><tr><th>IP</th><th>Область</th><th>Причина</th><th>До</th><th></th></tr></thead><tbody>` + rows.String() + `</tbody></table></section>`
+	content := `<div class="page-head"><div><h1>Блокировки</h1><p>Решения SG InfoSec, применённые ядром защиты.</p></div></div><section class="panel"><h2>Добавить вручную</h2><form class="form-grid" method="post" action="` + a.cfg.BasePath + `decisions/add"><input type="hidden" name="csrf" value="` + html.EscapeString(csrf) + `"><input type="hidden" name="source" value="local-admin"><input type="hidden" name="backend" value="nftables"><label>IP<input name="ip" placeholder="203.0.113.10" required></label><label>Область<input name="scope" value="ssh" required></label><label>Длительность<input name="duration" value="1h" required></label><label class="wide">Причина<input name="reason" value="manual-web" required></label><button type="submit">Заблокировать</button></form></section><section class="panel table-wrap"><table><thead><tr><th>IP</th><th>Область</th><th>Причина</th><th>До</th><th></th></tr></thead><tbody>` + rows.String() + `</tbody></table></section>`
 	a.renderPrivate(w, "Блокировки", username, csrf, content, http.StatusOK)
 }
 
@@ -231,7 +231,7 @@ func (a *application) addDecision(w http.ResponseWriter, r *http.Request, sessio
 		http.Error(w, "Некорректная форма", http.StatusBadRequest)
 		return
 	}
-	_, err := a.core.AddDecision(r.Context(), protocol.ManualDecisionRequest{SourceID: "sg-infosec-web", Scope: r.FormValue("scope"), IP: r.FormValue("ip"), Duration: r.FormValue("duration"), Reason: r.FormValue("reason")})
+	_, err := a.core.AddDecision(r.Context(), protocol.ManualDecisionRequest{SourceID: r.FormValue("source"), Scope: r.FormValue("scope"), Backend: r.FormValue("backend"), IP: r.FormValue("ip"), Duration: r.FormValue("duration"), Reason: r.FormValue("reason")})
 	if err != nil {
 		http.Error(w, "Блокировка отклонена: "+err.Error(), http.StatusBadRequest)
 		return
