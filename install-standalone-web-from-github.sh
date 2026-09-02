@@ -192,7 +192,7 @@ bootstrap_auth() {
     SETUP_RESULT="$(runuser -u "$WEB_USER" -- env \
         SG_INFOSEC_WEB_STATE="$WEB_STATE" \
         "$WEB_BINARY" --ensure-setup-code)" || fail "could not prepare standalone web authentication"
-    [[ "$SETUP_RESULT" == "configured" || "$SETUP_RESULT" =~ ^[A-Z2-9]{4}-[A-Z2-9]{4}-[A-Z2-9]{4}$ ]] || \
+    [[ "$SETUP_RESULT" == "configured" || "$SETUP_RESULT" =~ ^[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}$ ]] || \
         fail "unexpected authentication bootstrap result"
 }
 
