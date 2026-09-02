@@ -71,6 +71,10 @@ SETUP_CODE="$(grep -Eo 'One-time setup code: [0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}
 curl --fail --silent --show-error --insecure \
     https://127.0.0.1:64443/infosec/setup >"$SETUP_PAGE"
 grep -Fq 'Первичная настройка' "$SETUP_PAGE" || fail "setup page is unavailable"
+grep -Fq 'minlength="8"' "$SETUP_PAGE" || fail "setup page does not advertise the 8-character password minimum"
+if grep -Eq 'minlength="12"|pattern=|data-password-complexity' "$SETUP_PAGE"; then
+    fail "setup page still contains password complexity restrictions"
+fi
 
 SETUP_STATUS="$(curl --silent --show-error --insecure \
     --output /dev/null \
@@ -78,7 +82,7 @@ SETUP_STATUS="$(curl --silent --show-error --insecure \
     --request POST \
     --data-urlencode "setup_code=$SETUP_CODE" \
     --data-urlencode 'username=admin' \
-    --data-urlencode 'password=correct horse battery staple' \
+    --data-urlencode 'password=12345678' \
     https://127.0.0.1:64443/infosec/setup)"
 [[ "$SETUP_STATUS" == "303" ]] || fail "administrator setup returned HTTP $SETUP_STATUS"
 
@@ -92,7 +96,7 @@ LOGIN_STATUS="$(curl --silent --show-error --insecure \
     --cookie-jar "$COOKIE_JAR" \
     --request POST \
     --data-urlencode 'username=admin' \
-    --data-urlencode 'password=correct horse battery staple' \
+    --data-urlencode 'password=12345678' \
     https://127.0.0.1:64443/infosec/login)"
 [[ "$LOGIN_STATUS" == "303" ]] || fail "login returned HTTP $LOGIN_STATUS"
 
