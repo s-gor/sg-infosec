@@ -55,3 +55,9 @@ jobs:
           sudo env \
             "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
             bash scripts/smoke-install-from-github.sh
+
+      - name: Run standalone web installation smoke
+        run: |
+          sudo env \
+            "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
+            bash scripts/smoke-standalone-web-install.sh
