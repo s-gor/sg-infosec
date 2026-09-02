@@ -53,8 +53,8 @@ func TestLoadOverrides(t *testing.T) {
 
 func TestLoadRejectsUnsafeConfig(t *testing.T) {
 	tests := []struct {
-		name string
-		key  string
+		name  string
+		key   string
 		value string
 	}{
 		{name: "base without leading slash", key: "SG_INFOSEC_WEB_BASE_PATH", value: "infosec/"},
