@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"strings"
+	"unicode/utf8"
 
 	"golang.org/x/crypto/argon2"
 )
@@ -68,8 +69,8 @@ func VerifyPassword(encoded, password string) bool {
 }
 
 func validatePassword(password string) error {
-	if len(password) < 12 {
-		return fmt.Errorf("password must be at least 12 bytes")
+	if utf8.RuneCountInString(password) < 8 {
+		return fmt.Errorf("password must be at least 8 characters")
 	}
 	if len(password) > 1024 {
 		return fmt.Errorf("password is too long")
