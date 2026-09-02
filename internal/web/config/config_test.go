@@ -22,7 +22,7 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.BasePath != "/infosec/" {
 		t.Fatalf("base path=%q", cfg.BasePath)
 	}
-	if cfg.ListenSocket != "/run/sg-infosec/web.sock" {
+	if cfg.ListenSocket != "/run/sg-infosec-web/web.sock" {
 		t.Fatalf("listen socket=%q", cfg.ListenSocket)
 	}
 	if cfg.ControlSocket != "/run/sg-infosec/control.sock" {
