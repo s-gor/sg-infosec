@@ -197,18 +197,18 @@ bootstrap_auth() {
 }
 
 start_and_verify() {
-    rm -f /run/sg-infosec/web.sock
+    rm -f /run/sg-infosec-web/web.sock
     systemctl enable --now sg-infosec-web.service
     local attempt
     for attempt in $(seq 1 100); do
-        if systemctl is-active --quiet sg-infosec-web.service && [[ -S /run/sg-infosec/web.sock ]]; then
+        if systemctl is-active --quiet sg-infosec-web.service && [[ -S /run/sg-infosec-web/web.sock ]]; then
             break
         fi
         sleep 0.1
     done
     systemctl is-active --quiet sg-infosec-web.service || fail "sg-infosec-web.service is not active"
-    [[ -S /run/sg-infosec/web.sock ]] || fail "standalone web socket was not created"
-    [[ "$(stat -c '%U:%G' /run/sg-infosec/web.sock)" == "$WEB_USER:$WEB_GROUP" ]] || fail "standalone web socket has unsafe ownership"
+    [[ -S /run/sg-infosec-web/web.sock ]] || fail "standalone web socket was not created"
+    [[ "$(stat -c '%U:%G' /run/sg-infosec-web/web.sock)" == "$WEB_USER:$WEB_GROUP" ]] || fail "standalone web socket has unsafe ownership"
 
     nginx -t
     if (( NGINX_MEMBERSHIP_CHANGED )); then
