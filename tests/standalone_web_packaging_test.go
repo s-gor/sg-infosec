@@ -9,7 +9,7 @@ import (
 func TestStandaloneWebSystemdIsUnprivilegedAndSocketOnly(t *testing.T) {
 	unit := readRepositoryFile(t, "packaging/systemd/sg-infosec-web.service")
 	requireContains(t, unit,
-		"User=sg-infosec",
+		"User=sg-infosec-web",
 		"Group=sg-infosec-web",
 		"SupplementaryGroups=sg-infosec",
 		"Requires=sg-infosec.service",
@@ -24,7 +24,20 @@ func TestStandaloneWebSystemdIsUnprivilegedAndSocketOnly(t *testing.T) {
 		"CapabilityBoundingSet=",
 		"AmbientCapabilities=",
 	)
-	requireNotContains(t, unit, "User=root", "AF_INET", "AF_INET6", "CAP_NET_ADMIN")
+	requireNotContains(t, unit, "User=root", "User=sg-infosec\n", "AF_INET", "AF_INET6", "CAP_NET_ADMIN")
+}
+
+func TestStandaloneWebHasDedicatedCoreAuthorizationSource(t *testing.T) {
+	source := readRepositoryFile(t, "packaging/sources.d/standalone-web.yaml")
+	requireContains(t, source,
+		"source_id: sg-infosec-web",
+		"user: sg-infosec-web",
+		"group: sg-infosec-web",
+		"  - check_decisions",
+		"  - read_admin",
+		"  - write_admin",
+	)
+	requireNotContains(t, source, "user: root", "user: sg-infosec\n")
 }
 
 func TestStandaloneWebNginxUsesDedicatedHTTPSPortAndWebSocketOnly(t *testing.T) {
@@ -53,7 +66,10 @@ func TestStandaloneWebInstallerIsPinnedIndependentAndSelfVerifying(t *testing.T)
 		"install-from-github.sh",
 		"sg-infosec-web",
 		"groupadd --system \"$WEB_GROUP\"",
+		"useradd --system",
+		"usermod -a -G sg-infosec \"$WEB_USER\"",
 		"usermod -a -G \"$WEB_GROUP\" www-data",
+		"standalone-web.yaml",
 		"nginx -t",
 		"--ensure-setup-code",
 		"https://127.0.0.1:64443/infosec/",
