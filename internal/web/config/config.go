@@ -10,7 +10,7 @@ import (
 
 const (
 	defaultBasePath      = "/infosec/"
-	defaultListenSocket  = "/run/sg-infosec/web.sock"
+	defaultListenSocket  = "/run/sg-infosec-web/web.sock"
 	defaultControlSocket = "/run/sg-infosec/control.sock"
 	defaultStatePath     = "/var/lib/sg-infosec/web/auth.json"
 	defaultSessionTTL    = 8 * time.Hour
