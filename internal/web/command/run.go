@@ -37,12 +37,23 @@ func Run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	flags := flag.NewFlagSet("sg-infosec-web", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	issueSetup := flags.Bool("issue-setup-code", false, "issue one-time setup code")
+	ensureSetup := flags.Bool("ensure-setup-code", false, "issue setup code unless administrator already exists")
 	resetAdmin := flags.String("reset-admin", "", "reset administrator; password is read from stdin")
 	if err := flags.Parse(args); err != nil || flags.NArg() != 0 {
 		return 2
 	}
-	if *issueSetup && strings.TrimSpace(*resetAdmin) != "" {
-		fmt.Fprintln(stderr, "--issue-setup-code and --reset-admin are mutually exclusive")
+	modeCount := 0
+	if *issueSetup {
+		modeCount++
+	}
+	if *ensureSetup {
+		modeCount++
+	}
+	if strings.TrimSpace(*resetAdmin) != "" {
+		modeCount++
+	}
+	if modeCount > 1 {
+		fmt.Fprintln(stderr, "administrative command modes are mutually exclusive")
 		return 2
 	}
 
@@ -57,7 +68,11 @@ func Run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return 1
 	}
 
-	if *issueSetup {
+	if *issueSetup || *ensureSetup {
+		if *ensureSetup && store.AdminConfigured() {
+			fmt.Fprintln(stdout, "configured")
+			return 0
+		}
 		code, err := store.IssueSetupCode(setupCodeTTL)
 		if err != nil {
 			fmt.Fprintf(stderr, "setup code error: %v\n", err)
