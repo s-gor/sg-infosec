@@ -12,10 +12,10 @@ import (
 
 const (
 	argonMemory      uint32 = 64 * 1024
-	argonIterations uint32 = 3
+	argonIterations  uint32 = 3
 	argonParallelism uint8  = 2
 	argonSaltLength         = 16
-	argonKeyLength  uint32 = 32
+	argonKeyLength   uint32 = 32
 )
 
 func HashPassword(password string) (string, error) {
