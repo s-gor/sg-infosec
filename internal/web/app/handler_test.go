@@ -42,6 +42,16 @@ func (fakeCore) ListAudit(context.Context, coreclient.ListOptions) (protocol.Aud
 	return protocol.AuditListResponse{}, nil
 }
 
+type recordingCore struct {
+	fakeCore
+	decision protocol.ManualDecisionRequest
+}
+
+func (core *recordingCore) AddDecision(_ context.Context, request protocol.ManualDecisionRequest) (protocol.DecisionView, error) {
+	core.decision = request
+	return protocol.DecisionView{}, nil
+}
+
 func TestStandaloneWebSetupLoginAndDashboard(t *testing.T) {
 	store, err := auth.Open(t.TempDir()+"/auth.json", time.Now)
 	if err != nil {
@@ -111,6 +121,46 @@ func TestProtectedRoutesRequireSession(t *testing.T) {
 		if response.Code != http.StatusSeeOther || response.Header().Get("Location") != "/infosec/login" {
 			t.Fatalf("%s status=%d location=%q", path, response.Code, response.Header().Get("Location"))
 		}
+	}
+}
+
+func TestManualDecisionPreservesTargetSourceAndBackend(t *testing.T) {
+	store, err := auth.Open(t.TempDir()+"/auth.json", time.Now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.ResetAdmin("admin", "correct horse battery staple"); err != nil {
+		t.Fatal(err)
+	}
+	session, err := store.NewSession("admin", time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	core := &recordingCore{}
+	handler, err := New(Config{BasePath: "/infosec/", SessionTTL: time.Hour}, store, core)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	values := url.Values{
+		"csrf":     {session.CSRFToken},
+		"source":   {"local-admin"},
+		"scope":    {"ssh"},
+		"backend":  {"nftables"},
+		"ip":       {"198.51.100.44"},
+		"duration": {"5m"},
+		"reason":   {"web-smoke"},
+	}
+	req := httptest.NewRequest(http.MethodPost, "/infosec/decisions/add", strings.NewReader(values.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: session.Token + "." + session.CSRFToken})
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, req)
+	if response.Code != http.StatusSeeOther {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+	}
+	if core.decision.SourceID != "local-admin" || core.decision.Backend != "nftables" {
+		t.Fatalf("manual decision lost routing fields: %+v", core.decision)
 	}
 }
 
