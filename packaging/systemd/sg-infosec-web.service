@@ -1,0 +1,44 @@
+[Unit]
+Description=SG InfoSec standalone web interface
+After=local-fs.target sg-infosec.service
+Requires=sg-infosec.service
+
+[Service]
+Type=simple
+User=sg-infosec
+Group=sg-infosec-web
+SupplementaryGroups=sg-infosec
+Environment=SG_INFOSEC_WEB_BASE_PATH=/infosec/
+Environment=SG_INFOSEC_WEB_SOCKET=/run/sg-infosec/web.sock
+Environment=SG_INFOSEC_CONTROL_SOCKET=/run/sg-infosec/control.sock
+Environment=SG_INFOSEC_WEB_STATE=/var/lib/sg-infosec/web/auth.json
+Environment=SG_INFOSEC_WEB_SESSION_TTL=8h
+ExecStart=/usr/local/sbin/sg-infosec-web
+UMask=0007
+Restart=on-failure
+RestartSec=3s
+TimeoutStopSec=15s
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+PrivateNetwork=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictAddressFamilies=AF_UNIX
+CapabilityBoundingSet=
+AmbientCapabilities=
+SystemCallArchitectures=native
+ReadOnlyPaths=/etc/sg-infosec
+ReadWritePaths=/run/sg-infosec /var/lib/sg-infosec/web
+
+[Install]
+WantedBy=multi-user.target
