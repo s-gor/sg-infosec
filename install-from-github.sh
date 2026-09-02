@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-REPOSITORY_URL="${SG_INFOSEC_REPOSITORY_URL:-https://github.com/s-gor/sg-infosec.git}"
+DEFAULT_REPOSITORY_URL="https://github.com/s-gor/sg-infosec.git"
+REPOSITORY_URL="${SG_INFOSEC_REPOSITORY_URL:-$DEFAULT_REPOSITORY_URL}"
 SOURCE_SHA="${SG_INFOSEC_SOURCE_SHA:-}"
 FORCE_GO_INSTALL="${SG_INFOSEC_FORCE_GO_INSTALL:-0}"
 VERBOSE="${SG_INFOSEC_VERBOSE:-0}"
@@ -17,7 +18,9 @@ GREEN=$'\033[32m'
 RED=$'\033[31m'
 BOLD=$'\033[1m'
 RESET=$'\033[0m'
-SPINNER_FRAMES=('/' '-' '\' '|')
+SPINNER_FRAMES=('/' '-' '\\' '|')
+export GIT_TERMINAL_PROMPT=0
+export GIT_ASKPASS=/bin/false
 
 usage() {
     printf 'usage: %s <full-40-character-commit-sha>\n' "$0" >&2
@@ -219,12 +222,31 @@ prepare_go() {
     "$binary" env GOVERSION
 }
 
-download_source() {
+download_public_source_archive() {
+    local archive="$TEMP_DIR/source.tar.gz"
+    curl --fail --location --silent --show-error \
+        --retry 6 --retry-all-errors --retry-delay 2 --connect-timeout 20 \
+        --output "$archive" \
+        "https://codeload.github.com/s-gor/sg-infosec/tar.gz/$SOURCE_SHA"
+    mkdir -p "$SOURCE_DIR"
+    tar -xzf "$archive" --strip-components=1 -C "$SOURCE_DIR"
+    [[ -f "$SOURCE_DIR/go.mod" ]] || fail "pinned source archive is incomplete"
+}
+
+download_git_source() {
     git init --quiet "$SOURCE_DIR"
     git -C "$SOURCE_DIR" remote add origin "$REPOSITORY_URL"
-    git -C "$SOURCE_DIR" fetch --depth=1 origin "$SOURCE_SHA"
+    git -c credential.helper= -C "$SOURCE_DIR" fetch --depth=1 origin "$SOURCE_SHA"
     git -C "$SOURCE_DIR" checkout --quiet --detach FETCH_HEAD
     test "$(git -C "$SOURCE_DIR" rev-parse HEAD)" = "$SOURCE_SHA"
+}
+
+download_source() {
+    if [[ "$REPOSITORY_URL" == "$DEFAULT_REPOSITORY_URL" ]]; then
+        download_public_source_archive
+    else
+        download_git_source
+    fi
 }
 
 build_components() {
