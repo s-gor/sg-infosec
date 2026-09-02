@@ -4,11 +4,12 @@ set -Eeuo pipefail
 REPOSITORY_URL="${SG_INFOSEC_REPOSITORY_URL:-https://github.com/s-gor/sg-infosec.git}"
 SOURCE_SHA="${SG_INFOSEC_SOURCE_SHA:-}"
 WEB_GROUP="sg-infosec-web"
-WEB_USER="sg-infosec"
+WEB_USER="sg-infosec-web"
 WEB_BINARY="/usr/local/sbin/sg-infosec-web"
 WEB_UNIT="/etc/systemd/system/sg-infosec-web.service"
 WEB_STATE_DIR="/var/lib/sg-infosec/web"
-WEB_STATE="${SG_INFOSEC_WEB_STATE:-$WEB_STATE_DIR/auth.json}"
+WEB_STATE="$WEB_STATE_DIR/auth.json"
+WEB_SOURCE_CONFIG="/etc/sg-infosec/sources.d/standalone-web.yaml"
 TLS_DIR="/etc/sg-infosec/web"
 TLS_CERT="$TLS_DIR/tls.crt"
 TLS_KEY="$TLS_DIR/tls.key"
@@ -34,8 +35,8 @@ cleanup() {
     local status=$?
     set +e
     if (( status != 0 )); then
-        systemctl --no-pager --full status sg-infosec-web.service nginx.service >&2 2>/dev/null || true
-        journalctl -u sg-infosec-web.service -u nginx.service --no-pager -n 80 >&2 2>/dev/null || true
+        systemctl --no-pager --full status sg-infosec-web.service sg-infosec.service nginx.service >&2 2>/dev/null || true
+        journalctl -u sg-infosec-web.service -u sg-infosec.service -u nginx.service --no-pager -n 80 >&2 2>/dev/null || true
     fi
     [[ -z "$TEMP_DIR" ]] || rm -rf -- "$TEMP_DIR"
     exit "$status"
@@ -76,6 +77,7 @@ download_source() {
     [[ -f "$SOURCE_DIR/install-from-github.sh" ]] || fail "pinned core installer is missing"
     [[ -f "$SOURCE_DIR/packaging/systemd/sg-infosec-web.service" ]] || fail "web systemd unit is missing"
     [[ -f "$SOURCE_DIR/packaging/nginx/sg-infosec-web.conf" ]] || fail "web nginx config is missing"
+    [[ -f "$SOURCE_DIR/packaging/sources.d/standalone-web.yaml" ]] || fail "standalone-web.yaml authorization source is missing"
 }
 
 install_core() {
@@ -110,14 +112,40 @@ build_web() {
 
 install_identity_and_state() {
     getent group "$WEB_GROUP" >/dev/null 2>&1 || groupadd --system "$WEB_GROUP"
-    id -u "$WEB_USER" >/dev/null 2>&1 || fail "core service user $WEB_USER is missing"
+    if ! id -u "$WEB_USER" >/dev/null 2>&1; then
+        useradd --system \
+            --gid "$WEB_GROUP" \
+            --home-dir "$WEB_STATE_DIR" \
+            --no-create-home \
+            --shell /usr/sbin/nologin \
+            "$WEB_USER"
+    fi
     id -u www-data >/dev/null 2>&1 || fail "nginx user www-data is missing"
+    getent group sg-infosec >/dev/null 2>&1 || fail "core group sg-infosec is missing"
+    if ! id -nG "$WEB_USER" | tr ' ' '\n' | grep -Fxq sg-infosec; then
+        usermod -a -G sg-infosec "$WEB_USER"
+    fi
     if ! id -nG www-data | tr ' ' '\n' | grep -Fxq "$WEB_GROUP"; then
         usermod -a -G "$WEB_GROUP" www-data
         NGINX_MEMBERSHIP_CHANGED=1
     fi
     install -d -o "$WEB_USER" -g "$WEB_GROUP" -m 0750 "$WEB_STATE_DIR"
     install -d -o root -g root -m 0750 "$TLS_DIR"
+}
+
+install_core_authorization() {
+    install -m 0640 "$SOURCE_DIR/packaging/sources.d/standalone-web.yaml" "$WEB_SOURCE_CONFIG"
+    chown root:sg-infosec "$WEB_SOURCE_CONFIG"
+    /usr/local/sbin/sg-infosecd --config /etc/sg-infosec/sg-infosec.yaml --check-config
+    systemctl restart sg-infosec.service
+    local attempt
+    for attempt in $(seq 1 100); do
+        if systemctl is-active --quiet sg-infosec.service && [[ -S /run/sg-infosec/control.sock ]]; then
+            return 0
+        fi
+        sleep 0.1
+    done
+    fail "core did not recover after standalone web authorization install"
 }
 
 install_tls() {
@@ -180,7 +208,7 @@ start_and_verify() {
     done
     systemctl is-active --quiet sg-infosec-web.service || fail "sg-infosec-web.service is not active"
     [[ -S /run/sg-infosec/web.sock ]] || fail "standalone web socket was not created"
-    [[ "$(stat -c '%G' /run/sg-infosec/web.sock)" == "$WEB_GROUP" ]] || fail "standalone web socket has unsafe group ownership"
+    [[ "$(stat -c '%U:%G' /run/sg-infosec/web.sock)" == "$WEB_USER:$WEB_GROUP" ]] || fail "standalone web socket has unsafe ownership"
 
     nginx -t
     if (( NGINX_MEMBERSHIP_CHANGED )); then
@@ -247,6 +275,7 @@ download_source
 install_core
 build_web
 install_identity_and_state
+install_core_authorization
 install_tls
 install_web_files
 bootstrap_auth
