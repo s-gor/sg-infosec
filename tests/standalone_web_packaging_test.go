@@ -15,16 +15,20 @@ func TestStandaloneWebSystemdIsUnprivilegedAndSocketOnly(t *testing.T) {
 		"Requires=sg-infosec.service",
 		"ExecStart=/usr/local/sbin/sg-infosec-web",
 		"Environment=SG_INFOSEC_WEB_BASE_PATH=/infosec/",
-		"Environment=SG_INFOSEC_WEB_SOCKET=/run/sg-infosec/web.sock",
+		"Environment=SG_INFOSEC_WEB_SOCKET=/run/sg-infosec-web/web.sock",
 		"Environment=SG_INFOSEC_CONTROL_SOCKET=/run/sg-infosec/control.sock",
 		"Environment=SG_INFOSEC_WEB_STATE=/var/lib/sg-infosec/web/auth.json",
+		"RuntimeDirectory=sg-infosec-web",
+		"RuntimeDirectoryMode=0750",
 		"RestrictAddressFamilies=AF_UNIX",
 		"NoNewPrivileges=true",
 		"ProtectSystem=strict",
+		"ReadOnlyPaths=/etc/sg-infosec /run/sg-infosec",
+		"ReadWritePaths=/run/sg-infosec-web /var/lib/sg-infosec/web",
 		"CapabilityBoundingSet=",
 		"AmbientCapabilities=",
 	)
-	requireNotContains(t, unit, "User=root", "User=sg-infosec\n", "AF_INET", "AF_INET6", "CAP_NET_ADMIN")
+	requireNotContains(t, unit, "User=root", "User=sg-infosec\n", "AF_INET", "AF_INET6", "CAP_NET_ADMIN", "ReadWritePaths=/run/sg-infosec ")
 }
 
 func TestStandaloneWebHasDedicatedCoreAuthorizationSource(t *testing.T) {
@@ -45,7 +49,7 @@ func TestStandaloneWebNginxUsesDedicatedHTTPSPortAndWebSocketOnly(t *testing.T) 
 	requireContains(t, config,
 		"listen 64443 ssl",
 		"location /infosec/",
-		"/run/sg-infosec/web.sock",
+		"/run/sg-infosec-web/web.sock",
 		"proxy_set_header X-Real-IP $remote_addr",
 		"ssl_protocols TLSv1.2 TLSv1.3",
 	)
@@ -73,6 +77,7 @@ func TestStandaloneWebInstallerIsPinnedIndependentAndSelfVerifying(t *testing.T)
 		"nginx -t",
 		"--ensure-setup-code",
 		"https://127.0.0.1:64443/infosec/",
+		"/run/sg-infosec-web/web.sock",
 		"systemctl is-active --quiet sg-infosec-web.service",
 	)
 	requireNotContains(t, installer,
