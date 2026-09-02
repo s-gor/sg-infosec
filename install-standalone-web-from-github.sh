@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-REPOSITORY_URL="${SG_INFOSEC_REPOSITORY_URL:-https://github.com/s-gor/sg-infosec.git}"
+DEFAULT_REPOSITORY_URL="https://github.com/s-gor/sg-infosec.git"
+REPOSITORY_URL="${SG_INFOSEC_REPOSITORY_URL:-$DEFAULT_REPOSITORY_URL}"
 SOURCE_SHA="${SG_INFOSEC_SOURCE_SHA:-}"
 WEB_GROUP="sg-infosec-web"
 WEB_USER="sg-infosec-web"
@@ -21,6 +22,8 @@ TEMP_DIR=""
 SOURCE_DIR=""
 SETUP_RESULT=""
 NGINX_MEMBERSHIP_CHANGED=0
+export GIT_TERMINAL_PROMPT=0
+export GIT_ASKPASS=/bin/false
 
 usage() {
     printf 'usage: %s <full-40-character-commit-sha>\n' "$0" >&2
@@ -68,12 +71,31 @@ install_dependencies() {
         iproute2
 }
 
-download_source() {
+download_public_source_archive() {
+    local archive="$TEMP_DIR/source.tar.gz"
+    curl --fail --location --silent --show-error \
+        --retry 6 --retry-all-errors --retry-delay 2 --connect-timeout 20 \
+        --output "$archive" \
+        "https://codeload.github.com/s-gor/sg-infosec/tar.gz/$SOURCE_SHA"
+    mkdir -p "$SOURCE_DIR"
+    tar -xzf "$archive" --strip-components=1 -C "$SOURCE_DIR"
+    [[ -f "$SOURCE_DIR/install-from-github.sh" ]] || fail "pinned core installer is missing"
+}
+
+download_git_source() {
     git init --quiet "$SOURCE_DIR"
     git -C "$SOURCE_DIR" remote add origin "$REPOSITORY_URL"
-    git -C "$SOURCE_DIR" fetch --depth=1 origin "$SOURCE_SHA"
+    git -c credential.helper= -C "$SOURCE_DIR" fetch --depth=1 origin "$SOURCE_SHA"
     git -C "$SOURCE_DIR" checkout --quiet --detach FETCH_HEAD
     [[ "$(git -C "$SOURCE_DIR" rev-parse HEAD)" == "$SOURCE_SHA" ]] || fail "exact source checkout failed"
+}
+
+download_source() {
+    if [[ "$REPOSITORY_URL" == "$DEFAULT_REPOSITORY_URL" ]]; then
+        download_public_source_archive
+    else
+        download_git_source
+    fi
     [[ -f "$SOURCE_DIR/install-from-github.sh" ]] || fail "pinned core installer is missing"
     [[ -f "$SOURCE_DIR/packaging/systemd/sg-infosec-web.service" ]] || fail "web systemd unit is missing"
     [[ -f "$SOURCE_DIR/packaging/nginx/sg-infosec-web.conf" ]] || fail "web nginx config is missing"
