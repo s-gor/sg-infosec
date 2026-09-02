@@ -86,3 +86,12 @@ func TestStandaloneWebInstallerIsPinnedIndependentAndSelfVerifying(t *testing.T)
 		t.Fatalf("installer shell syntax failed: %v\n%s", err, output)
 	}
 }
+
+func TestStandaloneSetupCodeValidationMatchesHexGenerator(t *testing.T) {
+	installer := readRepositoryFile(t, "install-standalone-web-from-github.sh")
+	smoke := readRepositoryFile(t, "scripts/smoke-standalone-web-install.sh")
+	for _, content := range []string{installer, smoke} {
+		requireContains(t, content, "[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}")
+		requireNotContains(t, content, "[A-Z2-9]{4}-[A-Z2-9]{4}-[A-Z2-9]{4}")
+	}
+}
