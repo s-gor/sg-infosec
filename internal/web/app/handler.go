@@ -118,7 +118,7 @@ func (a *application) handleSetup(w http.ResponseWriter, r *http.Request) {
 		if !a.auth.SetupPending() {
 			message = "Setup-code отсутствует или истёк. Выпустите новый локальной командой администратора."
 		}
-		a.renderPublic(w, "Первичная настройка", `<section class="auth-card"><h1>Первичная настройка</h1><p>`+html.EscapeString(message)+`</p><form method="post"><label>Setup-code<input name="setup_code" autocomplete="one-time-code" required></label><label>Логин администратора<input name="username" autocomplete="username" minlength="3" maxlength="64" required></label><label>Пароль<input type="password" name="password" autocomplete="new-password" minlength="12" required></label><button type="submit">Создать администратора</button></form></section>`)
+		a.renderPublic(w, "Первичная настройка", `<section class="auth-card"><h1>Первичная настройка</h1><p>`+html.EscapeString(message)+`</p><form method="post"><label>Setup-code<input name="setup_code" autocomplete="one-time-code" required></label><label>Логин администратора<input name="username" autocomplete="username" minlength="3" maxlength="64" required></label><label>Пароль<input type="password" name="password" autocomplete="new-password" minlength="8" required></label><button type="submit">Создать администратора</button></form></section>`)
 	case http.MethodPost:
 		if err := parseSmallForm(r); err != nil {
 			http.Error(w, "Некорректная форма", http.StatusBadRequest)
