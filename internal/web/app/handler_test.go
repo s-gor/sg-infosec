@@ -52,6 +52,36 @@ func (core *recordingCore) AddDecision(_ context.Context, request protocol.Manua
 	return protocol.DecisionView{}, nil
 }
 
+func TestSetupFormUsesEightCharacterMinimumWithoutComplexityRules(t *testing.T) {
+	store, err := auth.Open(t.TempDir()+"/auth.json", time.Now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.IssueSetupCode(time.Hour); err != nil {
+		t.Fatal(err)
+	}
+	handler, err := New(Config{BasePath: "/infosec/", SessionTTL: time.Hour}, store, fakeCore{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/infosec/setup", nil)
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, req)
+	if response.Code != http.StatusOK {
+		t.Fatalf("setup form status=%d body=%s", response.Code, response.Body.String())
+	}
+	body := response.Body.String()
+	if !strings.Contains(body, `name="password" autocomplete="new-password" minlength="8"`) {
+		t.Fatalf("setup form does not expose the 8-character minimum: %s", body)
+	}
+	for _, forbidden := range []string{`minlength="12"`, `pattern=`, `data-password-complexity`} {
+		if strings.Contains(body, forbidden) {
+			t.Fatalf("setup form still contains a password complexity restriction %q: %s", forbidden, body)
+		}
+	}
+}
+
 func TestStandaloneWebSetupLoginAndDashboard(t *testing.T) {
 	store, err := auth.Open(t.TempDir()+"/auth.json", time.Now)
 	if err != nil {
@@ -69,7 +99,7 @@ func TestStandaloneWebSetupLoginAndDashboard(t *testing.T) {
 	setup := formRequest(t, handler, "/infosec/setup", url.Values{
 		"setup_code": {code},
 		"username":   {"admin"},
-		"password":   {"correct horse battery staple"},
+		"password":   {"12345678"},
 	})
 	if setup.Code != http.StatusSeeOther {
 		t.Fatalf("setup status=%d body=%s", setup.Code, setup.Body.String())
@@ -77,7 +107,7 @@ func TestStandaloneWebSetupLoginAndDashboard(t *testing.T) {
 
 	login := formRequest(t, handler, "/infosec/login", url.Values{
 		"username": {"admin"},
-		"password": {"correct horse battery staple"},
+		"password": {"12345678"},
 	})
 	if login.Code != http.StatusSeeOther {
 		t.Fatalf("login status=%d body=%s", login.Code, login.Body.String())
@@ -107,7 +137,7 @@ func TestProtectedRoutesRequireSession(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := store.ResetAdmin("admin", "correct horse battery staple"); err != nil {
+	if err := store.ResetAdmin("admin", "12345678"); err != nil {
 		t.Fatal(err)
 	}
 	handler, err := New(Config{BasePath: "/infosec/", SessionTTL: time.Hour}, store, fakeCore{})
@@ -129,7 +159,7 @@ func TestManualDecisionPreservesTargetSourceAndBackend(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := store.ResetAdmin("admin", "correct horse battery staple"); err != nil {
+	if err := store.ResetAdmin("admin", "12345678"); err != nil {
 		t.Fatal(err)
 	}
 	session, err := store.NewSession("admin", time.Hour)
