@@ -5,7 +5,7 @@ Requires=sg-infosec.service
 
 [Service]
 Type=simple
-User=sg-infosec
+User=sg-infosec-web
 Group=sg-infosec-web
 SupplementaryGroups=sg-infosec
 Environment=SG_INFOSEC_WEB_BASE_PATH=/infosec/
