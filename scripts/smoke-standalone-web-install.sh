@@ -63,7 +63,7 @@ systemctl is-active --quiet sg-infosec.service || fail "core is not active"
 systemctl is-active --quiet sg-infosec-web.service || fail "web service is not active"
 systemctl is-active --quiet nginx.service || fail "nginx is not active"
 [[ -S /run/sg-infosec/control.sock ]] || fail "control socket is missing"
-[[ -S /run/sg-infosec/web.sock ]] || fail "web socket is missing"
+[[ -S /run/sg-infosec-web/web.sock ]] || fail "web socket is missing"
 
 SETUP_CODE="$(grep -Eo 'One-time setup code: [0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}' "$INSTALL_OUTPUT" | tail -n1 | awk '{print $4}')"
 [[ "$SETUP_CODE" =~ ^[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}$ ]] || fail "setup code was not emitted"
