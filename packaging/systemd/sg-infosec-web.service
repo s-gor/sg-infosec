@@ -9,11 +9,13 @@ User=sg-infosec-web
 Group=sg-infosec-web
 SupplementaryGroups=sg-infosec
 Environment=SG_INFOSEC_WEB_BASE_PATH=/infosec/
-Environment=SG_INFOSEC_WEB_SOCKET=/run/sg-infosec/web.sock
+Environment=SG_INFOSEC_WEB_SOCKET=/run/sg-infosec-web/web.sock
 Environment=SG_INFOSEC_CONTROL_SOCKET=/run/sg-infosec/control.sock
 Environment=SG_INFOSEC_WEB_STATE=/var/lib/sg-infosec/web/auth.json
 Environment=SG_INFOSEC_WEB_SESSION_TTL=8h
 ExecStart=/usr/local/sbin/sg-infosec-web
+RuntimeDirectory=sg-infosec-web
+RuntimeDirectoryMode=0750
 UMask=0007
 Restart=on-failure
 RestartSec=3s
@@ -37,8 +39,8 @@ RestrictAddressFamilies=AF_UNIX
 CapabilityBoundingSet=
 AmbientCapabilities=
 SystemCallArchitectures=native
-ReadOnlyPaths=/etc/sg-infosec
-ReadWritePaths=/run/sg-infosec /var/lib/sg-infosec/web
+ReadOnlyPaths=/etc/sg-infosec /run/sg-infosec
+ReadWritePaths=/run/sg-infosec-web /var/lib/sg-infosec/web
 
 [Install]
 WantedBy=multi-user.target
