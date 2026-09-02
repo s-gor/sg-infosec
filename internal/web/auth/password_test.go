@@ -28,6 +28,17 @@ func TestPasswordRoundTripAndSalt(t *testing.T) {
 	}
 }
 
+func TestPasswordPolicyAllowsAnyEightCharacters(t *testing.T) {
+	for _, password := range []string{"12345678", "abcdefgh", "!!!!!!!!", "пароль12"} {
+		if err := validatePassword(password); err != nil {
+			t.Fatalf("8-character password %q rejected: %v", password, err)
+		}
+	}
+	if err := validatePassword("1234567"); err == nil {
+		t.Fatal("7-character password accepted")
+	}
+}
+
 func TestPasswordRejectsMalformedHash(t *testing.T) {
 	for _, encoded := range []string{"", "sha256:abc", "$argon2id$broken", "$argon2id$v=19$m=1,t=1,p=1$bad$bad"} {
 		if VerifyPassword(encoded, "anything") {
