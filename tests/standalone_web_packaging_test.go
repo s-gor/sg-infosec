@@ -62,7 +62,7 @@ func TestStandaloneWebNginxUsesDedicatedHTTPSPortAndWebSocketOnly(t *testing.T) 
 	)
 }
 
-func TestStandaloneWebInstallerIsPinnedIndependentAndSelfVerifying(t *testing.T) {
+func TestStandaloneWebInstallerUsesFixedAdminAndDoublePasswordPrompt(t *testing.T) {
 	installer := readRepositoryFile(t, "install-standalone-web-from-github.sh")
 	requireContains(t, installer,
 		"set -Eeuo pipefail",
@@ -73,34 +73,33 @@ func TestStandaloneWebInstallerIsPinnedIndependentAndSelfVerifying(t *testing.T)
 		"GIT_ASKPASS=/bin/false",
 		"install-from-github.sh",
 		"sg-infosec-web",
+		`ADMIN_USERNAME="admin"`,
+		"read_admin_password()",
+		`read -r -s ADMIN_PASSWORD`,
+		`read -r -s ADMIN_PASSWORD_CONFIRM`,
+		`[[ "$ADMIN_PASSWORD" == "$ADMIN_PASSWORD_CONFIRM" ]]`,
+		`--reset-admin "$ADMIN_USERNAME"`,
 		"groupadd --system \"$WEB_GROUP\"",
 		"useradd --system",
 		"usermod -a -G sg-infosec \"$WEB_USER\"",
 		"usermod -a -G \"$WEB_GROUP\" www-data",
 		"standalone-web.yaml",
 		"nginx -t",
-		"--ensure-setup-code",
 		"https://127.0.0.1:64443/infosec/",
 		"/run/sg-infosec-web/web.sock",
 		"systemctl is-active --quiet sg-infosec-web.service",
 	)
 	requireNotContains(t, installer,
+		"--ensure-setup-code",
+		"--issue-setup-code",
+		"One-time setup code",
+		"/infosec/setup",
 		"curl | bash",
 		"restart sg-gateway.service",
 		"try-restart sg-gateway.service",
-		"/run/sg-infosec/control.sock:;",
 	)
 	command := exec.Command("bash", "-n", filepath.Join(repositoryRoot(t), "install-standalone-web-from-github.sh"))
 	if output, err := command.CombinedOutput(); err != nil {
 		t.Fatalf("installer shell syntax failed: %v\n%s", err, output)
-	}
-}
-
-func TestStandaloneSetupCodeValidationMatchesHexGenerator(t *testing.T) {
-	installer := readRepositoryFile(t, "install-standalone-web-from-github.sh")
-	smoke := readRepositoryFile(t, "scripts/smoke-standalone-web-install.sh")
-	for _, content := range []string{installer, smoke} {
-		requireContains(t, content, "[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}")
-		requireNotContains(t, content, "[A-Z2-9]{4}-[A-Z2-9]{4}-[A-Z2-9]{4}")
 	}
 }
