@@ -4,6 +4,9 @@ set -Eeuo pipefail
 DEFAULT_REPOSITORY_URL="https://github.com/s-gor/sg-infosec.git"
 REPOSITORY_URL="${SG_INFOSEC_REPOSITORY_URL:-$DEFAULT_REPOSITORY_URL}"
 SOURCE_SHA="${SG_INFOSEC_SOURCE_SHA:-}"
+ADMIN_USERNAME="admin"
+ADMIN_PASSWORD=""
+ADMIN_PASSWORD_CONFIRM=""
 WEB_GROUP="sg-infosec-web"
 WEB_USER="sg-infosec-web"
 WEB_BINARY="/usr/local/sbin/sg-infosec-web"
@@ -20,7 +23,6 @@ NGINX_AVAILABLE="/etc/nginx/sites-available/sg-infosec-web.conf"
 NGINX_ENABLED="/etc/nginx/sites-enabled/sg-infosec-web.conf"
 TEMP_DIR=""
 SOURCE_DIR=""
-SETUP_RESULT=""
 NGINX_MEMBERSHIP_CHANGED=0
 export GIT_TERMINAL_PROMPT=0
 export GIT_ASKPASS=/bin/false
@@ -36,6 +38,8 @@ fail() {
 
 cleanup() {
     local status=$?
+    ADMIN_PASSWORD=""
+    ADMIN_PASSWORD_CONFIRM=""
     set +e
     if (( status != 0 )); then
         systemctl --no-pager --full status sg-infosec-web.service sg-infosec.service nginx.service >&2 2>/dev/null || true
@@ -57,6 +61,18 @@ check_system() {
         ubuntu:*|debian:*|*:debian*) ;;
         *) fail "only Debian and Ubuntu are supported" ;;
     esac
+}
+
+read_admin_password() {
+    printf 'SG InfoSec administrator login: %s\n' "$ADMIN_USERNAME" >&2
+    printf 'Administrator password (minimum 8 characters): ' >&2
+    IFS= read -r -s ADMIN_PASSWORD || fail "could not read administrator password"
+    printf '\nRepeat administrator password: ' >&2
+    IFS= read -r -s ADMIN_PASSWORD_CONFIRM || fail "could not read administrator password confirmation"
+    printf '\n' >&2
+    [[ "$ADMIN_PASSWORD" == "$ADMIN_PASSWORD_CONFIRM" ]] || fail "administrator passwords do not match"
+    (( ${#ADMIN_PASSWORD} >= 8 )) || fail "administrator password must be at least 8 characters"
+    (( ${#ADMIN_PASSWORD} <= 1024 )) || fail "administrator password is too long"
 }
 
 install_dependencies() {
@@ -211,11 +227,13 @@ install_web_files() {
 }
 
 bootstrap_auth() {
-    SETUP_RESULT="$(runuser -u "$WEB_USER" -- env \
+    if ! printf '%s\n' "$ADMIN_PASSWORD" | runuser -u "$WEB_USER" -- env \
         SG_INFOSEC_WEB_STATE="$WEB_STATE" \
-        "$WEB_BINARY" --ensure-setup-code)" || fail "could not prepare standalone web authentication"
-    [[ "$SETUP_RESULT" == "configured" || "$SETUP_RESULT" =~ ^[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}$ ]] || \
-        fail "unexpected authentication bootstrap result"
+        "$WEB_BINARY" --reset-admin "$ADMIN_USERNAME" >/dev/null; then
+        fail "could not configure standalone web administrator"
+    fi
+    ADMIN_PASSWORD=""
+    ADMIN_PASSWORD_CONFIRM=""
 }
 
 start_and_verify() {
@@ -263,13 +281,8 @@ print_result() {
     [[ -n "$server_ip" ]] || server_ip="SERVER_IP"
     printf '\nSG InfoSec standalone web successfully installed.\n'
     printf 'URL: https://%s:64443/infosec/\n' "$server_ip"
+    printf 'Login: %s\n' "$ADMIN_USERNAME"
     printf 'Commit: %s\n' "$SOURCE_SHA"
-    if [[ "$SETUP_RESULT" != "configured" ]]; then
-        printf 'One-time setup code: %s\n' "$SETUP_RESULT"
-        printf 'The setup code expires in 30 minutes and is invalidated after administrator creation.\n'
-    else
-        printf 'Existing standalone administrator and authentication state were preserved.\n'
-    fi
     if [[ -z "$TLS_CERT_SOURCE" ]]; then
         printf 'TLS: existing certificate was preserved, or a local self-signed certificate was created when none existed.\n'
     else
@@ -290,6 +303,7 @@ if [[ ! "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]; then
 fi
 
 check_system
+read_admin_password
 TEMP_DIR="$(mktemp -d)"
 SOURCE_DIR="$TEMP_DIR/source"
 install_dependencies
