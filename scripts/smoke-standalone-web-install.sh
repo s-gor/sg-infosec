@@ -6,7 +6,6 @@ SOURCE_SHA="$(git -C "$ROOT_DIR" rev-parse HEAD)"
 TEMP_DIR="$(mktemp -d)"
 INSTALL_OUTPUT="$TEMP_DIR/install.out"
 COOKIE_JAR="$TEMP_DIR/cookies.txt"
-SETUP_PAGE="$TEMP_DIR/setup.html"
 LOGIN_PAGE="$TEMP_DIR/login.html"
 DECISIONS_PAGE="$TEMP_DIR/decisions.html"
 INSTALLED=0
@@ -49,8 +48,8 @@ userdel sg-infosec-web >/dev/null 2>&1 || true
 groupdel sg-infosec-web >/dev/null 2>&1 || true
 systemctl daemon-reload >/dev/null 2>&1 || true
 
-if ! SG_INFOSEC_REPOSITORY_URL="file://$ROOT_DIR" \
-    TERM=dumb \
+if ! printf '12345678\n12345678\n' | \
+    env SG_INFOSEC_REPOSITORY_URL="file://$ROOT_DIR" TERM=dumb \
     bash "$ROOT_DIR/install-standalone-web-from-github.sh" "$SOURCE_SHA" >"$INSTALL_OUTPUT" 2>&1; then
     cat "$INSTALL_OUTPUT" >&2
     fail "installer failed"
@@ -58,33 +57,17 @@ fi
 cat "$INSTALL_OUTPUT"
 INSTALLED=1
 
+grep -Fq 'Login: admin' "$INSTALL_OUTPUT" || fail "installer did not report the fixed admin login"
+if grep -Fq 'One-time setup code' "$INSTALL_OUTPUT"; then
+    fail "installer still emitted a setup token"
+fi
+
 systemctl is-active --quiet sg-infosec-enforcer.service || fail "enforcer is not active"
 systemctl is-active --quiet sg-infosec.service || fail "core is not active"
 systemctl is-active --quiet sg-infosec-web.service || fail "web service is not active"
 systemctl is-active --quiet nginx.service || fail "nginx is not active"
 [[ -S /run/sg-infosec/control.sock ]] || fail "control socket is missing"
 [[ -S /run/sg-infosec-web/web.sock ]] || fail "web socket is missing"
-
-SETUP_CODE="$(grep -Eo 'One-time setup code: [0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}' "$INSTALL_OUTPUT" | tail -n1 | awk '{print $4}')"
-[[ "$SETUP_CODE" =~ ^[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}$ ]] || fail "setup code was not emitted"
-
-curl --fail --silent --show-error --insecure \
-    https://127.0.0.1:64443/infosec/setup >"$SETUP_PAGE"
-grep -Fq 'Первичная настройка' "$SETUP_PAGE" || fail "setup page is unavailable"
-grep -Fq 'minlength="8"' "$SETUP_PAGE" || fail "setup page does not advertise the 8-character password minimum"
-if grep -Eq 'minlength="12"|pattern=|data-password-complexity' "$SETUP_PAGE"; then
-    fail "setup page still contains password complexity restrictions"
-fi
-
-SETUP_STATUS="$(curl --silent --show-error --insecure \
-    --output /dev/null \
-    --write-out '%{http_code}' \
-    --request POST \
-    --data-urlencode "setup_code=$SETUP_CODE" \
-    --data-urlencode 'username=admin' \
-    --data-urlencode 'password=12345678' \
-    https://127.0.0.1:64443/infosec/setup)"
-[[ "$SETUP_STATUS" == "303" ]] || fail "administrator setup returned HTTP $SETUP_STATUS"
 
 curl --fail --silent --show-error --insecure \
     https://127.0.0.1:64443/infosec/login >"$LOGIN_PAGE"
