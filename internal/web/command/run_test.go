@@ -6,59 +6,28 @@ import (
 	"testing"
 )
 
-func TestIssueSetupCodeCommand(t *testing.T) {
+func TestSetupCodeCommandsAreNotExposed(t *testing.T) {
+	for _, args := range [][]string{{"--issue-setup-code"}, {"--ensure-setup-code"}} {
+		t.Run(args[0], func(t *testing.T) {
+			t.Setenv("SG_INFOSEC_WEB_STATE", t.TempDir()+"/auth.json")
+			var stdout bytes.Buffer
+			var stderr bytes.Buffer
+			if code := Run(args, strings.NewReader(""), &stdout, &stderr); code != 2 {
+				t.Fatalf("exit=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+			}
+		})
+	}
+}
+
+func TestResetAdminCommandAcceptsSimpleEightCharacterPasswordFromStdin(t *testing.T) {
 	state := t.TempDir() + "/auth.json"
 	t.Setenv("SG_INFOSEC_WEB_STATE", state)
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	if code := Run([]string{"--issue-setup-code"}, strings.NewReader(""), &stdout, &stderr); code != 0 {
-		t.Fatalf("exit=%d stderr=%s", code, stderr.String())
-	}
-	assertSetupCode(t, stdout.String())
-}
-
-func TestEnsureSetupCodeIssuesOnlyBeforeAdminExists(t *testing.T) {
-	state := t.TempDir() + "/auth.json"
-	t.Setenv("SG_INFOSEC_WEB_STATE", state)
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	if code := Run([]string{"--ensure-setup-code"}, strings.NewReader(""), &stdout, &stderr); code != 0 {
-		t.Fatalf("first exit=%d stderr=%s", code, stderr.String())
-	}
-	assertSetupCode(t, stdout.String())
-
-	stdout.Reset()
-	stderr.Reset()
-	if code := Run([]string{"--reset-admin", "admin"}, strings.NewReader("correct horse battery staple\n"), &stdout, &stderr); code != 0 {
-		t.Fatalf("reset exit=%d stderr=%s", code, stderr.String())
-	}
-	stdout.Reset()
-	stderr.Reset()
-	if code := Run([]string{"--ensure-setup-code"}, strings.NewReader(""), &stdout, &stderr); code != 0 {
-		t.Fatalf("configured exit=%d stderr=%s", code, stderr.String())
-	}
-	if strings.TrimSpace(stdout.String()) != "configured" {
-		t.Fatalf("configured stdout=%q", stdout.String())
-	}
-}
-
-func TestResetAdminCommandReadsPasswordFromStdin(t *testing.T) {
-	t.Setenv("SG_INFOSEC_WEB_STATE", t.TempDir()+"/auth.json")
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	if code := Run([]string{"--reset-admin", "admin"}, strings.NewReader("correct horse battery staple\n"), &stdout, &stderr); code != 0 {
+	if code := Run([]string{"--reset-admin", "admin"}, strings.NewReader("12345678\n"), &stdout, &stderr); code != 0 {
 		t.Fatalf("exit=%d stderr=%s", code, stderr.String())
 	}
 	if !strings.Contains(stdout.String(), "administrator reset") {
 		t.Fatalf("unexpected stdout=%q", stdout.String())
-	}
-}
-
-func assertSetupCode(t *testing.T, output string) {
-	t.Helper()
-	value := strings.TrimSpace(output)
-	parts := strings.Split(value, "-")
-	if len(parts) != 3 || len(parts[0]) != 4 || len(parts[1]) != 4 || len(parts[2]) != 4 {
-		t.Fatalf("unexpected setup code %q", value)
 	}
 }
