@@ -52,9 +52,12 @@ func (core *recordingCore) AddDecision(_ context.Context, request protocol.Manua
 	return protocol.DecisionView{}, nil
 }
 
-func TestSetupRouteIsNotExposed(t *testing.T) {
+func TestConfiguredAdminBypassesBrowserSetup(t *testing.T) {
 	store, err := auth.Open(t.TempDir()+"/auth.json", time.Now)
 	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.ResetAdmin("admin", "12345678"); err != nil {
 		t.Fatal(err)
 	}
 	handler, err := New(Config{BasePath: "/infosec/", SessionTTL: time.Hour}, store, fakeCore{})
@@ -65,8 +68,8 @@ func TestSetupRouteIsNotExposed(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/infosec/setup", nil)
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, req)
-	if response.Code != http.StatusNotFound {
-		t.Fatalf("setup route status=%d body=%s", response.Code, response.Body.String())
+	if response.Code != http.StatusSeeOther || response.Header().Get("Location") != "/infosec/login" {
+		t.Fatalf("setup route status=%d location=%q body=%s", response.Code, response.Header().Get("Location"), response.Body.String())
 	}
 }
 
