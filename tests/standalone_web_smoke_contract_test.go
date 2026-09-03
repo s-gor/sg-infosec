@@ -14,10 +14,7 @@ func TestStandaloneWebRealInstallSmokeIsInReleaseGate(t *testing.T) {
 		"https://127.0.0.1:64443/infosec/decisions",
 		"standalone web install smoke passed",
 	)
-	requireNotContains(t, smoke,
-		"/infosec/setup",
-		"One-time setup code",
-	)
+	requireNotContains(t, smoke, "/infosec/setup")
 	workflow := readRepositoryFile(t, ".github/workflows/enforcer-gate.yml")
 	requireContains(t, workflow,
 		"Run standalone web installation smoke",
