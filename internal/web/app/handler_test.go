@@ -52,12 +52,9 @@ func (core *recordingCore) AddDecision(_ context.Context, request protocol.Manua
 	return protocol.DecisionView{}, nil
 }
 
-func TestSetupFormUsesEightCharacterMinimumWithoutComplexityRules(t *testing.T) {
+func TestSetupRouteIsNotExposed(t *testing.T) {
 	store, err := auth.Open(t.TempDir()+"/auth.json", time.Now)
 	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := store.IssueSetupCode(time.Hour); err != nil {
 		t.Fatal(err)
 	}
 	handler, err := New(Config{BasePath: "/infosec/", SessionTTL: time.Hour}, store, fakeCore{})
@@ -68,41 +65,22 @@ func TestSetupFormUsesEightCharacterMinimumWithoutComplexityRules(t *testing.T) 
 	req := httptest.NewRequest(http.MethodGet, "/infosec/setup", nil)
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, req)
-	if response.Code != http.StatusOK {
-		t.Fatalf("setup form status=%d body=%s", response.Code, response.Body.String())
-	}
-	body := response.Body.String()
-	if !strings.Contains(body, `name="password" autocomplete="new-password" minlength="8"`) {
-		t.Fatalf("setup form does not expose the 8-character minimum: %s", body)
-	}
-	for _, forbidden := range []string{`minlength="12"`, `pattern=`, `data-password-complexity`} {
-		if strings.Contains(body, forbidden) {
-			t.Fatalf("setup form still contains a password complexity restriction %q: %s", forbidden, body)
-		}
+	if response.Code != http.StatusNotFound {
+		t.Fatalf("setup route status=%d body=%s", response.Code, response.Body.String())
 	}
 }
 
-func TestStandaloneWebSetupLoginAndDashboard(t *testing.T) {
+func TestStandaloneWebDirectLoginAndDashboard(t *testing.T) {
 	store, err := auth.Open(t.TempDir()+"/auth.json", time.Now)
 	if err != nil {
 		t.Fatal(err)
 	}
-	code, err := store.IssueSetupCode(time.Hour)
-	if err != nil {
+	if err := store.ResetAdmin("admin", "12345678"); err != nil {
 		t.Fatal(err)
 	}
 	handler, err := New(Config{BasePath: "/infosec/", SessionTTL: time.Hour}, store, fakeCore{})
 	if err != nil {
 		t.Fatal(err)
-	}
-
-	setup := formRequest(t, handler, "/infosec/setup", url.Values{
-		"setup_code": {code},
-		"username":   {"admin"},
-		"password":   {"12345678"},
-	})
-	if setup.Code != http.StatusSeeOther {
-		t.Fatalf("setup status=%d body=%s", setup.Code, setup.Body.String())
 	}
 
 	login := formRequest(t, handler, "/infosec/login", url.Values{
