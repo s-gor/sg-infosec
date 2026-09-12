@@ -125,14 +125,14 @@ func countForKey(values []OverviewBreakdown, key string) int64 {
 
 func socEvent(sourceID, eventID string, eventType model.EventType, scope model.Scope, ip string, receivedAt time.Time) model.Event {
 	return model.Event{
-		SourceID: sourceID,
-		EventID: eventID,
-		EventType: eventType,
-		Scope: scope,
-		IP: netip.MustParseAddr(ip),
-		Subject: "subject",
+		SourceID:   sourceID,
+		EventID:    eventID,
+		EventType:  eventType,
+		Scope:      scope,
+		IP:         netip.MustParseAddr(ip),
+		Subject:    "subject",
 		OccurredAt: receivedAt,
 		ReceivedAt: receivedAt,
-		Metadata: map[string]any{"test": true},
+		Metadata:   map[string]any{"test": true},
 	}
 }
