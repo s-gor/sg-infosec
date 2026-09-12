@@ -25,7 +25,6 @@ func TestEventListRequiresReadAdminAndAppliesFilters(t *testing.T) {
 	if denied.Code != http.StatusForbidden {
 		t.Fatalf("denied status=%d body=%s", denied.Code, denied.Body.String())
 	}
-
 	since := fixture.now.Add(-time.Hour).Format(time.RFC3339)
 	path := "/v1/events?limit=20&scope=ssh&event_type=auth.failed&since=" + url.QueryEscape(since)
 	response := fixture.request(t, http.MethodGet, path, nil, fixture.reader)
@@ -53,7 +52,6 @@ func TestOverviewReturnsExactWindowSummary(t *testing.T) {
 	seedSOCEvent(t, fixture, "ssh", "ssh-2", model.EventAuthFailed, model.ScopeSSH, "198.51.100.10", fixture.now.Add(-40*time.Minute))
 	seedSOCEvent(t, fixture, "panel-a", "panel-1", model.EventAuthFailed, model.ScopeAdminLogin, "203.0.113.20", fixture.now.Add(-20*time.Minute))
 	seedSOCEvent(t, fixture, "panel-a", "ok-1", model.EventAuthSucceeded, model.ScopeAdminLogin, "203.0.113.20", fixture.now.Add(-10*time.Minute))
-
 	fixture.insertDecision(t, "active", "panel-a", "203.0.113.20", fixture.now.Add(time.Hour))
 	response := fixture.request(t, http.MethodGet, "/v1/overview?window=1h", nil, fixture.reader)
 	if response.Code != http.StatusOK {
@@ -84,20 +82,17 @@ func TestOverviewRejectsInvalidWindowAndRequiresReadAdmin(t *testing.T) {
 func seedSOCEvent(t *testing.T, fixture *controlFixture, sourceID, eventID string, eventType model.EventType, scope model.Scope, ip string, receivedAt time.Time) {
 	t.Helper()
 	event := model.Event{
-		SourceID: sourceID,
-		EventID: eventID,
-		EventType: eventType,
-		Scope: scope,
-		IP: netip.MustParseAddr(ip),
-		Subject: "subject",
+		SourceID:   sourceID,
+		EventID:    eventID,
+		EventType:  eventType,
+		Scope:      scope,
+		IP:         netip.MustParseAddr(ip),
+		Subject:    "subject",
 		OccurredAt: receivedAt,
 		ReceivedAt: receivedAt,
-		Metadata: map[string]any{"seed": true},
+		Metadata:   map[string]any{"seed": true},
 	}
-	if err := fixture.database.WithTx(context.Background(), func(tx *store.Tx) error {
-		_, err := tx.InsertEvent(context.Background(), event)
-		return err
-	}); err != nil {
+	if err := fixture.database.WithTx(context.Background(), func(tx *store.Tx) error { _, err := tx.InsertEvent(context.Background(), event); return err }); err != nil {
 		t.Fatal(err)
 	}
 }
