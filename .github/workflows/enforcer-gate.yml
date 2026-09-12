@@ -8,6 +8,7 @@ on:
       - feature/autonomous-detection-v1
       - feature/infosec-complete-v1
       - feature/standalone-web-ui
+      - fix/standalone-web-tls-lifecycle
   workflow_dispatch:
 
 permissions:
