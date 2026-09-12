@@ -3,11 +3,10 @@ package control
 import (
 	"context"
 	"net/http"
-
-	"github.com/s-gor/sg-infosec/internal/config"
 	"strings"
 
 	"github.com/s-gor/sg-infosec/internal/clock"
+	"github.com/s-gor/sg-infosec/internal/config"
 	"github.com/s-gor/sg-infosec/internal/decision"
 	"github.com/s-gor/sg-infosec/internal/sourceauth"
 	"github.com/s-gor/sg-infosec/internal/store"
@@ -59,6 +58,10 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, request *http.Request) {
 	}
 
 	switch {
+	case request.URL.Path == "/v1/events":
+		h.handleEventList(w, request, identity, requestID)
+	case request.URL.Path == "/v1/overview":
+		h.handleOverview(w, request, identity, requestID)
 	case request.URL.Path == "/v1/decisions/check":
 		h.handleDecisionCheck(w, request, identity, requestID)
 	case request.URL.Path == "/v1/decisions/manual":
