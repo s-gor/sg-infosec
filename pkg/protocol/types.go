@@ -17,6 +17,45 @@ type EventResponse struct {
 	DecisionID string `json:"decision_id,omitempty"`
 	RequestID  string `json:"request_id"`
 }
+type EventView struct {
+	ID         int64     `json:"id"`
+	SourceID   string    `json:"source_id"`
+	EventID    string    `json:"event_id"`
+	EventType  string    `json:"event_type"`
+	Scope      string    `json:"scope"`
+	IP         string    `json:"ip"`
+	Subject    string    `json:"subject,omitempty"`
+	OccurredAt time.Time `json:"occurred_at"`
+	ReceivedAt time.Time `json:"received_at"`
+}
+type EventListResponse struct {
+	Items []EventView `json:"items"`
+}
+type OverviewBreakdown struct {
+	Key   string `json:"key"`
+	Count int64  `json:"count"`
+}
+type OverviewBucket struct {
+	Start time.Time `json:"start"`
+	Count int64     `json:"count"`
+}
+type SourceActivity struct {
+	SourceID string    `json:"source_id"`
+	Count    int64     `json:"count"`
+	LastSeen time.Time `json:"last_seen"`
+}
+type OverviewResponse struct {
+	Window             string              `json:"window"`
+	EventsTotal        int64               `json:"events_total"`
+	FailedEvents       int64               `json:"failed_events"`
+	UniqueIPs          int64               `json:"unique_ips"`
+	ActiveDecisions    int64               `json:"active_decisions"`
+	AutomaticDecisions int64               `json:"automatic_decisions"`
+	ByScope            []OverviewBreakdown `json:"by_scope"`
+	ByEventType        []OverviewBreakdown `json:"by_event_type"`
+	Hourly             []OverviewBucket    `json:"hourly"`
+	Sources            []SourceActivity    `json:"sources"`
+}
 type ErrorResponse struct {
 	Code      string `json:"code"`
 	Message   string `json:"message"`
